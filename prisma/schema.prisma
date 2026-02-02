@@ -1,0 +1,51 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int              @id @default(autoincrement())
+  username     String           @unique
+  passwordHash String
+  role         String           @default("user")
+  createdAt    DateTime         @default(now())
+  progress     CourseProgress[]
+}
+
+model Course {
+  id          Int              @id @default(autoincrement())
+  slug        String           @unique
+  title       String
+  description String
+  questions   Question[]
+  progress    CourseProgress[]
+}
+
+model Question {
+  id          Int     @id @default(autoincrement())
+  course      Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  courseId    Int
+  text        String
+  optionsJson String  // JSON-encoded string array of options
+  answer      String  // Correct answer text
+}
+
+model CourseProgress {
+  id                    Int      @id @default(autoincrement())
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId                Int
+  course                Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  courseId              Int
+  completedQuestionJson String   // JSON-encoded string array of question IDs
+  score                 Int
+  updatedAt             DateTime @updatedAt
+
+  @@unique([userId, courseId])
+}
