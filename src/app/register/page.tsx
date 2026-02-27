@@ -21,20 +21,21 @@ export default function RegisterPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "Registration failed.");
+        setError(data.error ?? "Sikertelen regisztráció.");
         return;
       }
       router.push("/courses");
     } catch {
-      setError("Network error while registering.");
+      setError("Hálózati hiba regisztráció közben.");
     }
   }
 
   return (
     <div className="card">
-      <h1>Create account</h1>
+      <h1>Fiók létrehozása</h1>
       <p className="muted" style={{ marginTop: "0.25rem" }}>
-        Register to keep your progress in sync and unlock admin features where allowed.
+        Regisztrálj, hogy a haladásod szinkronban maradjon, és ahol engedélyezett,
+        elérd az admin funkciókat.
       </p>
       <form
         onSubmit={handleSubmit}
@@ -42,7 +43,7 @@ export default function RegisterPage() {
       >
         <div>
           <label className="field-label" htmlFor="username">
-            Username
+            Felhasználónév
           </label>
           <input
             id="username"
@@ -55,7 +56,7 @@ export default function RegisterPage() {
         </div>
         <div>
           <label className="field-label" htmlFor="password">
-            Password
+            Jelszó
           </label>
           <input
             id="password"
@@ -71,7 +72,7 @@ export default function RegisterPage() {
           <p style={{ color: "#fecaca", fontSize: "0.85rem" }}>{error}</p>
         )}
         <button type="submit" className="btn btn-primary" style={{ marginTop: "0.4rem" }}>
-          Sign up
+          Regisztráció
         </button>
       </form>
     </div>

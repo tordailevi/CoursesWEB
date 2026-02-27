@@ -46,6 +46,7 @@ export async function GET(request: Request) {
       completedQuestionIds: JSON.parse(
         progress.completedQuestionJson,
       ) as string[],
+      answers: JSON.parse(progress.answersJson) as Record<string, number[]>,
       score: progress.score,
       updatedAt: progress.updatedAt,
     },
@@ -61,6 +62,7 @@ export async function POST(request: Request) {
   const body = (await request.json()) as {
     courseSlug?: string;
     completedQuestionIds?: string[];
+    answers?: Record<string, number[]>;
     score?: number;
   };
 
@@ -96,6 +98,7 @@ export async function POST(request: Request) {
     userId: user.id,
     courseId: course.id,
     completedQuestionJson: JSON.stringify(body.completedQuestionIds),
+    answersJson: JSON.stringify(body.answers ?? {}),
     score: body.score,
   };
 

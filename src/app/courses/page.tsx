@@ -46,14 +46,15 @@ export default function CoursesPage() {
       <section className="card">
         <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem" }}>
           <div>
-            <h1>Courses</h1>
+            <h1>Kurzusok</h1>
             <p className="muted" style={{ marginTop: "0.3rem" }}>
-              Pick a course and start answering questions. You can return later and continue.
+              Válassz egy kurzust és kezdd el megválaszolni a kérdéseket. Később
+              visszatérhetsz és folytathatod.
             </p>
           </div>
           {user?.role === "admin" && (
             <Link href="/admin/courses/new" className="btn btn-primary">
-              New course
+              Új kurzus
             </Link>
           )}
         </div>
@@ -79,18 +80,17 @@ export default function CoursesPage() {
                   {course.description}
                 </span>
                 <span className="muted" style={{ fontSize: "0.8rem" }}>
-                  {course.questionCount} question
-                  {course.questionCount === 1 ? "" : "s"}
+                  {course.questionCount} kérdés
                 </span>
               </Link>
             </li>
           ))}
           {courses.length === 0 && (
             <li className="muted" style={{ listStyle: "none" }}>
-              No courses yet.{" "}
+              Még nincs kurzus.{" "}
               {user?.role === "admin"
-                ? "Create the first one from the admin screen."
-                : "Ask an admin to create a course."}
+                ? "Hozd létre az elsőt az admin felületen."
+                : "Kérj meg egy admint, hogy hozzon létre kurzust."}
             </li>
           )}
         </ul>

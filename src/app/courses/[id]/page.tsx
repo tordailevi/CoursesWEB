@@ -7,8 +7,9 @@ import { loadGuestProgress, saveGuestProgress } from "@/lib/storage";
 type Question = {
   id: number;
   text: string;
+  imageUrl?: string | null;
   options: string[];
-  answer: string;
+  correctOptionIndexes: number[];
 };
 
 type CourseDto = {
@@ -30,10 +31,11 @@ type MeResponse = {
 type ProgressDto = {
   courseSlug: string;
   completedQuestionIds: string[];
+  answers: Record<string, number[]>;
   score: number;
 };
 
-type AnswerMap = Record<number, string>;
+type AnswerMap = Record<number, number[]>;
 
 export default function CourseDetailPage() {
   const params = useParams<{ id: string }>();
@@ -43,6 +45,7 @@ export default function CourseDetailPage() {
   const [submitted, setSubmitted] = useState(false);
   const [score, setScore] = useState<number | null>(null);
   const [notFoundState, setNotFoundState] = useState(false);
+  const [currentIndex, setCurrentIndex] = useState(0);
 
   useEffect(() => {
     async function load() {
@@ -61,6 +64,7 @@ export default function CourseDetailPage() {
         const meData = (await meRes.json()) as MeResponse;
         setCourse(courseData);
         setUser(meData.user);
+        setCurrentIndex(0);
 
         const loggedIn = !!meData.user;
         if (loggedIn) {
@@ -73,13 +77,14 @@ export default function CourseDetailPage() {
             };
             if (progress) {
               const previousAnswers: AnswerMap = {};
-              progress.completedQuestionIds.forEach((idStr) => {
+              for (const [idStr, selected] of Object.entries(progress.answers ?? {})) {
                 const id = Number(idStr);
-                const q = courseData.questions.find((qq) => qq.id === id);
-                if (q) {
-                  previousAnswers[q.id] = q.answer;
+                if (Number.isFinite(id)) {
+                  previousAnswers[id] = Array.isArray(selected)
+                    ? selected.filter((n) => Number.isInteger(n))
+                    : [];
                 }
-              });
+              }
               setAnswers(previousAnswers);
               setScore(progress.score);
               setSubmitted(true);
@@ -91,13 +96,14 @@ export default function CourseDetailPage() {
           );
           if (guest) {
             const previousAnswers: AnswerMap = {};
-            guest.completedQuestionIds.forEach((id) => {
-              const idNum = Number(id);
-              const q = courseData.questions.find((qq) => qq.id === idNum);
-              if (q) {
-                previousAnswers[q.id] = q.answer;
+            for (const [idStr, selected] of Object.entries(guest.answers ?? {})) {
+              const id = Number(idStr);
+              if (Number.isFinite(id)) {
+                previousAnswers[id] = Array.isArray(selected)
+                  ? selected.filter((n) => Number.isInteger(n))
+                  : [];
               }
-            });
+            }
             setAnswers(previousAnswers);
             setScore(guest.score >= 0 ? guest.score : null);
             setSubmitted(guest.score >= 0);
@@ -123,17 +129,20 @@ export default function CourseDetailPage() {
     return (
       <div className="card-grid">
         <section className="card">
-          <p className="muted">Loading course...</p>
+          <p className="muted">Kurzus betöltése...</p>
         </section>
       </div>
     );
   }
 
-  function handleChange(questionId: number, option: string) {
-    setAnswers((prev) => ({
-      ...prev,
-      [questionId]: option,
-    }));
+  function toggleOption(questionId: number, optionIndex: number) {
+    setAnswers((prev) => {
+      const existing = prev[questionId] ?? [];
+      const next = existing.includes(optionIndex)
+        ? existing.filter((i) => i !== optionIndex)
+        : [...existing, optionIndex];
+      return { ...prev, [questionId]: next };
+    });
     setSubmitted(false);
   }
 
@@ -145,7 +154,15 @@ export default function CourseDetailPage() {
     const completedIds: string[] = [];
 
     course.questions.forEach((q) => {
-      if (answers[q.id] === q.answer) {
+      const selected = (answers[q.id] ?? []).slice().sort((a, b) => a - b);
+      const expected = (q.correctOptionIndexes ?? [])
+        .slice()
+        .sort((a, b) => a - b);
+      const same =
+        selected.length === expected.length &&
+        selected.every((v, i) => v === expected[i]);
+
+      if (same) {
         correct += 1;
         completedIds.push(String(q.id));
       }
@@ -168,6 +185,9 @@ export default function CourseDetailPage() {
           body: JSON.stringify({
             courseSlug: course.slug,
             completedQuestionIds: completedIds,
+            answers: Object.fromEntries(
+              Object.entries(answers).map(([k, v]) => [String(k), v]),
+            ),
             score: percent,
           }),
         });
@@ -180,6 +200,9 @@ export default function CourseDetailPage() {
       const created = {
         courseId: course.slug,
         completedQuestionIds: completedIds,
+        answers: Object.fromEntries(
+          Object.entries(answers).map(([k, v]) => [String(k), v]),
+        ),
         score: percent,
       };
       if (existingIndex === -1) {
@@ -193,7 +216,10 @@ export default function CourseDetailPage() {
   }
 
   const percentLabel =
-    submitted && score !== null ? `${score}% correct` : "Not submitted yet";
+    submitted && score !== null ? `${score}%` : "Nincs elmentve";
+
+  const currentQuestion = course.questions[currentIndex];
+  const isLast = currentIndex === totalQuestions - 1;
 
   return (
     <div className="card-grid">
@@ -204,86 +230,113 @@ export default function CourseDetailPage() {
         </p>
         <p className="muted" style={{ marginTop: "0.4rem", fontSize: "0.8rem" }}>
           {user
-            ? `Logged in as ${user.username}. Your progress is saved to your account.`
-            : "You are working as a guest. Progress is saved in this browser only."}
+            ? `Bejelentkezve mint ${user.username}. A haladás a fiókodhoz mentődik.`
+            : "Vendég módban vagy. A haladás csak ebben a böngészőben mentődik."}
         </p>
 
         <form
           onSubmit={handleSubmit}
           style={{ marginTop: "1.3rem", display: "grid", gap: "1rem" }}
         >
-          {course.questions.map((q, idx) => (
+          <div
+            key={currentQuestion.id}
+            className="question-panel"
+            style={{
+              padding: "0.9rem 0.95rem",
+              borderRadius: "12px",
+              border: "1px solid rgba(148, 163, 184, 0.45)",
+              backgroundColor: "rgba(15, 23, 42, 0.9)",
+            }}
+          >
             <div
-              key={q.id}
               style={{
-                padding: "0.9rem 0.95rem",
-                borderRadius: "12px",
-                border: "1px solid rgba(148, 163, 184, 0.45)",
-                backgroundColor: "rgba(15, 23, 42, 0.9)",
+                display: "flex",
+                justifyContent: "space-between",
+                marginBottom: "0.4rem",
+                gap: "0.75rem",
               }}
             >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  marginBottom: "0.4rem",
-                  gap: "0.75rem",
-                }}
-              >
-                <div>
+              <div>
+                <div
+                  style={{
+                    fontSize: "0.8rem",
+                    color: "var(--text-muted)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em",
+                  }}
+                >
+                  Kérdés {currentIndex + 1} / {totalQuestions}
+                </div>
+                <p style={{ marginTop: "0.1rem" }}>{currentQuestion.text}</p>
+                {currentQuestion.imageUrl && (
                   <div
                     style={{
-                      fontSize: "0.8rem",
-                      color: "var(--text-muted)",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.08em",
+                      marginTop: "0.5rem",
+                      borderRadius: "12px",
+                      overflow: "hidden",
+                      border: "1px solid rgba(148, 163, 184, 0.35)",
+                      maxHeight: "260px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: "rgba(15, 23, 42, 0.9)",
                     }}
                   >
-                    Question {idx + 1} / {totalQuestions}
-                  </div>
-                  <p style={{ marginTop: "0.1rem" }}>{q.text}</p>
-                </div>
-              </div>
-              <div style={{ display: "grid", gap: "0.4rem", marginTop: "0.45rem" }}>
-                {q.options.map((opt) => {
-                  const isSelected = answers[q.id] === opt;
-                  const isCorrect = submitted && opt === q.answer;
-                  const isWrongSelected = submitted && isSelected && !isCorrect;
-
-                  return (
-                    <label
-                      key={opt}
+                    <img
+                      src={currentQuestion.imageUrl}
+                      alt="Kérdés illusztráció"
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.55rem",
-                        padding: "0.45rem 0.6rem",
-                        borderRadius: "999px",
-                        border: "1px solid rgba(148, 163, 184, 0.4)",
-                        cursor: "pointer",
-                        backgroundColor: isCorrect
-                          ? "rgba(34, 197, 94, 0.15)"
-                          : isWrongSelected
-                            ? "rgba(239, 68, 68, 0.18)"
-                            : isSelected
-                              ? "rgba(56, 189, 248, 0.12)"
-                              : "transparent",
+                        maxWidth: "100%",
+                        maxHeight: "260px",
+                        objectFit: "contain",
+                        display: "block",
                       }}
-                    >
-                      <input
-                        type="radio"
-                        name={String(q.id)}
-                        value={opt}
-                        checked={isSelected}
-                        onChange={() => handleChange(q.id, opt)}
-                      />
-                      <span style={{ fontSize: "0.9rem" }}>{opt}</span>
-                    </label>
-                  );
-                })}
+                    />
+                  </div>
+                )}
               </div>
             </div>
-          ))}
+
+            <div style={{ display: "grid", gap: "0.4rem", marginTop: "0.45rem" }}>
+              {currentQuestion.options.map((opt, optIdx) => {
+                const selected = answers[currentQuestion.id] ?? [];
+                const isSelected = selected.includes(optIdx);
+                const isCorrect = submitted
+                  ? (currentQuestion.correctOptionIndexes ?? []).includes(optIdx)
+                  : false;
+                const isWrongSelected = submitted && isSelected && !isCorrect;
+
+                return (
+                  <label
+                    key={`${currentQuestion.id}-${optIdx}`}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.55rem",
+                      padding: "0.45rem 0.6rem",
+                      borderRadius: "999px",
+                      border: "1px solid rgba(148, 163, 184, 0.4)",
+                      cursor: "pointer",
+                      backgroundColor: isCorrect
+                        ? "rgba(34, 197, 94, 0.15)"
+                        : isWrongSelected
+                          ? "rgba(239, 68, 68, 0.18)"
+                          : isSelected
+                            ? "rgba(56, 189, 248, 0.12)"
+                            : "transparent",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleOption(currentQuestion.id, optIdx)}
+                    />
+                    <span style={{ fontSize: "0.9rem" }}>{opt}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
 
           <div
             style={{
@@ -294,11 +347,33 @@ export default function CourseDetailPage() {
               marginTop: "0.5rem",
             }}
           >
-            <button type="submit" className="btn btn-primary">
-              Check answers
-            </button>
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={currentIndex === 0}
+                onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))}
+              >
+                Előző
+              </button>
+              {!isLast ? (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() =>
+                    setCurrentIndex((i) => Math.min(totalQuestions - 1, i + 1))
+                  }
+                >
+                  Következő
+                </button>
+              ) : (
+                <button type="submit" className="btn btn-primary">
+                  Válaszok mentése
+                </button>
+              )}
+            </div>
             <p className="muted" style={{ fontSize: "0.85rem" }}>
-              Score: {percentLabel}
+              Mentett eredmény: {percentLabel}
             </p>
           </div>
         </form>

@@ -62,8 +62,12 @@ export async function GET() {
           questions: {
             create: course.questions.map((q) => ({
               text: q.text,
+              imageUrl: null,
               optionsJson: JSON.stringify(q.options),
               answer: q.answer,
+              correctOptionIndexesJson: JSON.stringify([
+                Math.max(0, q.options.indexOf(q.answer)),
+              ]),
             })),
           },
         },
@@ -106,8 +110,10 @@ export async function POST(request: Request) {
     description?: string;
     questions?: {
       text: string;
+      imageUrl?: string | null;
       options: string[];
-      answer: string;
+      answer?: string;
+      correctOptionIndexes?: number[];
     }[];
   };
 
@@ -123,14 +129,17 @@ export async function POST(request: Request) {
   let counter = 1;
 
   // Ensure slug uniqueness
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
+  let unique = false;
+  while (!unique) {
     const existing = await prisma.course.findUnique({
       where: { slug },
       select: { id: true },
     });
-    if (!existing) break;
-    slug = `${baseSlug}-${counter++}`;
+    if (!existing) {
+      unique = true;
+    } else {
+      slug = `${baseSlug}-${counter++}`;
+    }
   }
 
   const created = await prisma.course.create({
@@ -141,8 +150,27 @@ export async function POST(request: Request) {
       questions: {
         create: questions.map((q) => ({
           text: q.text,
+          imageUrl: q.imageUrl ?? null,
           optionsJson: JSON.stringify(q.options),
-          answer: q.answer,
+          answer:
+            q.answer ??
+            q.options[
+              Array.isArray(q.correctOptionIndexes) && q.correctOptionIndexes.length
+                ? q.correctOptionIndexes[0]
+                : 0
+            ] ??
+            q.options[0] ??
+            "",
+          correctOptionIndexesJson: JSON.stringify(
+            Array.from(
+              new Set(
+                (Array.isArray(q.correctOptionIndexes) && q.correctOptionIndexes) ||
+                  (q.answer ? [q.options.indexOf(q.answer)] : [0]),
+              ),
+            )
+              .filter((i) => Number.isInteger(i) && i >= 0 && i < q.options.length)
+              .sort((a, b) => a - b),
+          ),
         })),
       },
     },

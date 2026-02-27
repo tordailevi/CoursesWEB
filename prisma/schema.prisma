@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -29,12 +29,14 @@ model Course {
 }
 
 model Question {
-  id          Int     @id @default(autoincrement())
-  course      Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  courseId    Int
-  text        String
-  optionsJson String  // JSON-encoded string array of options
-  answer      String  // Correct answer text
+  id                     Int     @id @default(autoincrement())
+  course                 Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  courseId               Int
+  text                   String
+  imageUrl               String? // optional illustration image
+  optionsJson            String  // JSON-encoded string array of options
+  answer                 String  // legacy single correct answer text
+  correctOptionIndexesJson String @default("[]") // JSON-encoded number[] of correct option indexes
 }
 
 model CourseProgress {
@@ -44,6 +46,7 @@ model CourseProgress {
   course                Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
   courseId              Int
   completedQuestionJson String   // JSON-encoded string array of question IDs
+  answersJson           String   @default("{}") // JSON-encoded Record<string, number[]> for selected options
   score                 Int
   updatedAt             DateTime @updatedAt
 

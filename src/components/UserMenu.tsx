@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 type MeResponse = {
   user: {
@@ -16,6 +16,7 @@ export function UserMenu() {
   const [user, setUser] = useState<MeResponse["user"] | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     async function load() {
@@ -30,7 +31,7 @@ export function UserMenu() {
       }
     }
     void load();
-  }, []);
+  }, [pathname]);
 
   async function handleLogout() {
     try {
@@ -47,7 +48,7 @@ export function UserMenu() {
     return (
       <div className="nav-user">
         <span className="muted" style={{ fontSize: "0.8rem" }}>
-          Checking session...
+          Bejelentkezés ellenőrzése...
         </span>
       </div>
     );
@@ -57,10 +58,10 @@ export function UserMenu() {
     return (
       <div className="nav-user">
         <Link href="/login" className="nav-link">
-          Login
+          Belépés
         </Link>
         <Link href="/register" className="nav-link nav-link-accent">
-          Register
+          Regisztráció
         </Link>
       </div>
     );
@@ -72,13 +73,22 @@ export function UserMenu() {
         {user.username}{" "}
         {user.role === "admin" ? "(admin)" : ""}
       </span>
+      {user.role === "admin" && (
+        <Link
+          href="/admin"
+          className="btn btn-ghost"
+          style={{ paddingInline: "0.85rem", fontSize: "0.8rem" }}
+        >
+          Admin felület
+        </Link>
+      )}
       <button
         type="button"
         className="btn btn-ghost"
         style={{ paddingInline: "0.85rem", fontSize: "0.8rem" }}
         onClick={handleLogout}
       >
-        Logout
+        Kilépés
       </button>
     </div>
   );

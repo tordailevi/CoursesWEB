@@ -10,6 +10,7 @@ export type User = {
 export type CourseProgress = {
   courseId: string;
   completedQuestionIds: string[];
+  answers?: Record<string, number[]>;
   score: number;
 };
 

@@ -13,6 +13,8 @@
   --radius-lg: 18px;
   --radius-md: 12px;
   --radius-pill: 999px;
+  --ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 *,
@@ -39,6 +41,23 @@ body {
     radial-gradient(circle at top left, rgba(56, 189, 248, 0.12), transparent),
     radial-gradient(circle at bottom right, rgba(129, 140, 248, 0.12), transparent),
     var(--bg);
+  position: relative;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: -25%;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(56, 189, 248, 0.25), transparent 55%),
+    radial-gradient(circle at 90% 100%, rgba(129, 140, 248, 0.25), transparent 55%);
+  opacity: 0.55;
+  filter: blur(2px);
+  mix-blend-mode: screen;
+  pointer-events: none;
+  animation: bgWave 26s ease-in-out infinite alternate;
 }
 
 a {
@@ -101,13 +120,15 @@ a {
   border-radius: 999px;
   color: var(--text-muted);
   border: 1px solid transparent;
-  transition: all 0.16s ease-out;
+  transition: transform 0.18s var(--ease-soft), background-color 0.18s var(--ease-soft),
+    border-color 0.18s var(--ease-soft), color 0.18s var(--ease-soft);
 }
 
 .nav-link:hover {
   color: var(--text-main);
   border-color: rgba(148, 163, 184, 0.4);
   background-color: rgba(15, 23, 42, 0.9);
+  transform: translateY(-1px);
 }
 
 .nav-link-accent {
@@ -146,6 +167,11 @@ a {
     linear-gradient(to bottom right, rgba(15, 23, 42, 0.96), rgba(15, 23, 42, 0.96));
   border: 1px solid rgba(148, 163, 184, 0.35);
   box-shadow: var(--shadow-soft);
+  animation: fadeUp 520ms var(--ease-out) both;
+}
+
+.question-panel {
+  animation: questionIn 420ms var(--ease-out) both;
 }
 
 .hero-card h1 {
@@ -176,8 +202,14 @@ a {
   border-radius: var(--radius-pill);
   border: 1px solid transparent;
   cursor: pointer;
-  transition: all 0.15s ease-out;
+  transition: transform 0.18s var(--ease-soft), box-shadow 0.18s var(--ease-soft),
+    filter 0.18s var(--ease-soft), border-color 0.18s var(--ease-soft),
+    background-color 0.18s var(--ease-soft);
   white-space: nowrap;
+}
+
+.btn:active {
+  transform: translateY(1px) scale(0.99);
 }
 
 .btn-primary {
@@ -188,6 +220,7 @@ a {
 
 .btn-primary:hover {
   filter: brightness(1.05);
+  transform: translateY(-1px);
 }
 
 .btn-ghost {
@@ -199,6 +232,56 @@ a {
 .btn-ghost:hover {
   background-color: rgba(15, 23, 42, 1);
   border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes questionIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes bgWave {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(3%, -2%, 0) scale(1.04);
+  }
+  to {
+    transform: translate3d(-3%, 2%, 0) scale(1.02);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .question-panel,
+  body::before {
+    animation: none !important;
+  }
+
+  .btn,
+  .nav-link {
+    transition: none !important;
+  }
 }
 
 .muted {

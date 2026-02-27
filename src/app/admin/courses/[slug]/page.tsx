@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 type MeResponse = {
   user: {
@@ -11,60 +11,94 @@ type MeResponse = {
   } | null;
 };
 
+type CourseDto = {
+  id: number;
+  slug: string;
+  title: string;
+  description: string;
+  questions: {
+    id: number;
+    text: string;
+    imageUrl?: string | null;
+    options: string[];
+    correctOptionIndexes: number[];
+  }[];
+};
+
 type QuestionForm = {
   id: string;
+  dbId?: number;
   text: string;
   imageUrl?: string;
   options: string[];
   correctOptionIndexes: number[];
 };
 
-export default function NewCoursePage() {
+export default function EditCoursePage() {
+  const params = useParams<{ slug: string }>();
   const router = useRouter();
-  const [user, setUser] = useState<MeResponse["user"] | null>(null);
+
+  const [me, setMe] = useState<MeResponse["user"] | null>(null);
+  const [loadingCourse, setLoadingCourse] = useState(true);
+  const [courseSlug, setCourseSlug] = useState<string | null>(null);
+
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [questions, setQuestions] = useState<QuestionForm[]>([
-    {
-      id: "q-1",
-      text: "",
-      imageUrl: "",
-      options: ["", "", "", ""],
-      correctOptionIndexes: [],
-    },
-  ]);
+  const [questions, setQuestions] = useState<QuestionForm[]>([]);
+
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
   const [uploadingForId, setUploadingForId] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
+      const rawSlug = (params as unknown as { slug?: string | string[] }).slug;
+      const slug = Array.isArray(rawSlug) ? rawSlug[0] : rawSlug;
+      if (!slug) return;
+
       try {
-        const res = await fetch("/api/auth/me");
-        const data = (await res.json()) as MeResponse;
-        setUser(data.user);
+        setLoadingCourse(true);
+        setError(null);
+        const meRes = await fetch("/api/auth/me");
+        const meData = (await meRes.json()) as MeResponse;
+        setMe(meData.user);
+        if (!meData.user || meData.user.role !== "admin") return;
+
+        setCourseSlug(slug);
+        const courseRes = await fetch(`/api/courses/${encodeURIComponent(slug)}`, {
+          cache: "no-store",
+        });
+        if (!courseRes.ok) {
+          setError("A kurzus nem található.");
+          return;
+        }
+        const course = (await courseRes.json()) as CourseDto;
+        setTitle(course.title);
+        setDescription(course.description);
+        setQuestions(
+          course.questions.map((q, idx) => ({
+            id: `q-${q.id}-${idx}`,
+            dbId: q.id,
+            text: q.text,
+            imageUrl: q.imageUrl ?? "",
+            options: q.options.length ? q.options : ["", ""],
+            correctOptionIndexes: Array.isArray(q.correctOptionIndexes)
+              ? q.correctOptionIndexes.filter((n) => Number.isInteger(n))
+              : [],
+          })),
+        );
       } catch {
-        setUser(null);
+        setError("Nem sikerült betölteni a kurzust.");
+      } finally {
+        setLoadingCourse(false);
       }
     }
     void load();
-  }, []);
+  }, [params.slug]);
 
-  if (!user || user.role !== "admin") {
-    return (
-      <div className="card">
-        <h1>Csak adminoknak</h1>
-        <p className="muted" style={{ marginTop: "0.3rem" }}>
-          Új kurzus létrehozásához admin fiókkal kell belépned.
-        </p>
-      </div>
-    );
-  }
-
-  function updateQuestion(
-    index: number,
-    updater: (prev: QuestionForm) => QuestionForm,
-  ) {
+  function updateQuestion(index: number, updater: (prev: QuestionForm) => QuestionForm) {
     setQuestions((prev) => {
       const copy = [...prev];
       copy[index] = updater(copy[index]);
@@ -76,7 +110,8 @@ export default function NewCoursePage() {
     setQuestions((prev) => [
       ...prev,
       {
-        id: `q-${prev.length + 1}`,
+        id: `q-new-${prev.length + 1}`,
+        dbId: undefined,
         text: "",
         imageUrl: "",
         options: ["", "", "", ""],
@@ -85,30 +120,27 @@ export default function NewCoursePage() {
     ]);
   }
 
+  function removeQuestion(index: number) {
+    setQuestions((prev) => prev.filter((_, i) => i !== index));
+  }
+
   async function handleImageDrop(questionId: string, file: File) {
     setUploadError(null);
     setUploadingForId(questionId);
     try {
       const form = new FormData();
       form.append("file", file);
-
-      const res = await fetch("/api/admin/upload-image", {
-        method: "POST",
-        body: form,
-      });
+      const res = await fetch("/api/admin/upload-image", { method: "POST", body: form });
       const data = await res.json();
       if (!res.ok) {
-        setUploadError(data.error ?? "Failed to upload image.");
+        setUploadError(data.error ?? "Nem sikerült feltölteni a képet.");
         return;
       }
-
       setQuestions((prev) =>
-        prev.map((q) =>
-          q.id === questionId ? { ...q, imageUrl: data.url as string } : q,
-        ),
+        prev.map((q) => (q.id === questionId ? { ...q, imageUrl: data.url as string } : q)),
       );
     } catch {
-      setUploadError("Network error while uploading image.");
+      setUploadError("Hálózati hiba kép feltöltése közben.");
     } finally {
       setUploadingForId(null);
     }
@@ -116,6 +148,7 @@ export default function NewCoursePage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!courseSlug) return;
     setError(null);
 
     if (!title.trim()) {
@@ -130,6 +163,7 @@ export default function NewCoursePage() {
     }
 
     const preparedQuestions: {
+      id?: number;
       text: string;
       imageUrl: string | null;
       options: string[];
@@ -163,6 +197,7 @@ export default function NewCoursePage() {
       }
 
       preparedQuestions.push({
+        id: q.dbId,
         text: q.text.trim(),
         imageUrl: q.imageUrl?.trim() ? q.imageUrl.trim() : null,
         options: optionPairs.map((p) => p.value),
@@ -171,51 +206,74 @@ export default function NewCoursePage() {
     }
 
     try {
-      const res = await fetch("/api/courses", {
-        method: "POST",
+      setSaving(true);
+      const res = await fetch(`/api/courses/${encodeURIComponent(courseSlug)}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: title.trim(),
-          description: description.trim() || "Custom course",
+          description: description.trim(),
           questions: preparedQuestions,
         }),
       });
 
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "Nem sikerült létrehozni a kurzust.");
+        setError(data.error ?? "Nem sikerült menteni a kurzust.");
         return;
       }
 
       router.push(`/courses/${data.slug}`);
     } catch {
       setError("Hálózati hiba mentés közben.");
+    } finally {
+      setSaving(false);
     }
+  }
+
+  if (!me) {
+    return (
+      <div className="card">
+        <h1>Admin – Kurzus szerkesztése</h1>
+        <p className="muted" style={{ marginTop: "0.3rem" }}>
+          A megtekintéshez admin fiókkal kell belépned.
+        </p>
+      </div>
+    );
+  }
+
+  if (me.role !== "admin") {
+    return (
+      <div className="card">
+        <h1>Csak adminoknak</h1>
+        <p className="muted" style={{ marginTop: "0.3rem" }}>
+          Kurzusokat csak admin jogosultsággal lehet szerkeszteni.
+        </p>
+      </div>
+    );
+  }
+
+  if (loadingCourse) {
+    return (
+      <div className="card">
+        <p className="muted">Kurzus betöltése...</p>
+      </div>
+    );
   }
 
   return (
     <div className="card">
-      <h1>Új kurzus</h1>
+      <h1>Kurzus szerkesztése</h1>
       <p className="muted" style={{ marginTop: "0.25rem" }}>
-        Hozz létre egy kurzust feleletválasztós kérdésekkel. Később bármikor
-        szerkeszthető.
+        Kurzus tartalmának, kérdéseinek, képeinek és helyes válaszainak módosítása.
       </p>
 
-      <form
-        onSubmit={handleSubmit}
-        style={{ marginTop: "1.2rem", display: "grid", gap: "1.1rem" }}
-      >
+      <form onSubmit={handleSubmit} style={{ marginTop: "1.2rem", display: "grid", gap: "1.1rem" }}>
         <div>
           <label className="field-label" htmlFor="title">
             Cím
           </label>
-          <input
-            id="title"
-            className="input"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            required
-          />
+          <input id="title" className="input" value={title} onChange={(e) => setTitle(e.target.value)} required />
         </div>
 
         <div>
@@ -241,12 +299,7 @@ export default function NewCoursePage() {
             }}
           >
             <label className="field-label">Kérdések</label>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              style={{ paddingInline: "0.9rem", fontSize: "0.85rem" }}
-              onClick={addQuestion}
-            >
+            <button type="button" className="btn btn-ghost" style={{ paddingInline: "0.9rem", fontSize: "0.85rem" }} onClick={addQuestion}>
               Kérdés hozzáadása
             </button>
           </div>
@@ -262,13 +315,7 @@ export default function NewCoursePage() {
                   backgroundColor: "rgba(15, 23, 42, 0.9)",
                 }}
               >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    marginBottom: "0.35rem",
-                  }}
-                >
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.35rem", gap: "0.6rem" }}>
                   <span
                     style={{
                       fontSize: "0.8rem",
@@ -279,18 +326,23 @@ export default function NewCoursePage() {
                   >
                     Question {index + 1}
                   </span>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{ paddingInline: "0.7rem", fontSize: "0.8rem" }}
+                    disabled={questions.length <= 1}
+                    onClick={() => removeQuestion(index)}
+                  >
+                    Törlés
+                  </button>
                 </div>
+
                 <div style={{ display: "grid", gap: "0.4rem" }}>
                   <input
                     className="input"
                     placeholder="Kérdés szövege"
                     value={q.text}
-                    onChange={(e) =>
-                      updateQuestion(index, (prev) => ({
-                        ...prev,
-                        text: e.target.value,
-                      }))
-                    }
+                    onChange={(e) => updateQuestion(index, (prev) => ({ ...prev, text: e.target.value }))}
                   />
 
                   <div
@@ -302,9 +354,7 @@ export default function NewCoursePage() {
                       event.preventDefault();
                       event.stopPropagation();
                       const file = event.dataTransfer.files?.[0];
-                      if (file) {
-                        void handleImageDrop(q.id, file);
-                      }
+                      if (file) void handleImageDrop(q.id, file);
                     }}
                     style={{
                       marginTop: "0.25rem",
@@ -324,37 +374,16 @@ export default function NewCoursePage() {
                       input.onchange = (e) => {
                         const target = e.target as HTMLInputElement;
                         const file = target.files?.[0];
-                        if (file) {
-                          void handleImageDrop(q.id, file);
-                        }
+                        if (file) void handleImageDrop(q.id, file);
                       };
                       input.click();
                     }}
                   >
-                    <span
-                      style={{
-                        fontSize: "0.8rem",
-                        color: "var(--text-muted)",
-                      }}
-                    >
+                    <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
                       Húzd ide a képet (drag &amp; drop), vagy kattints a kiválasztáshoz.
                     </span>
-                    <span
-                      style={{
-                        fontSize: "0.75rem",
-                        color: "var(--text-muted)",
-                      }}
-                    >
-                      JPG, PNG, GIF, max 5MB. A képet automatikusan szépen
-                      méretezzük, hogy ne foglalja el a fél oldalt.
-                    </span>
                     {uploadingForId === q.id && (
-                      <span
-                        style={{
-                          fontSize: "0.75rem",
-                          color: "var(--text-muted)",
-                        }}
-                      >
+                      <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
                         Kép feltöltése...
                       </span>
                     )}
@@ -364,12 +393,7 @@ export default function NewCoursePage() {
                     className="input"
                     placeholder="Kép URL (opcionális)"
                     value={q.imageUrl ?? ""}
-                    onChange={(e) =>
-                      updateQuestion(index, (prev) => ({
-                        ...prev,
-                        imageUrl: e.target.value,
-                      }))
-                    }
+                    onChange={(e) => updateQuestion(index, (prev) => ({ ...prev, imageUrl: e.target.value }))}
                   />
 
                   {q.imageUrl && (
@@ -399,7 +423,8 @@ export default function NewCoursePage() {
                     </div>
                   )}
                 </div>
-                <div style={{ display: "grid", gap: "0.35rem" }}>
+
+                <div style={{ display: "grid", gap: "0.35rem", marginTop: "0.6rem" }}>
                   {q.options.map((opt, optIdx) => (
                     <label
                       key={optIdx}
@@ -416,13 +441,9 @@ export default function NewCoursePage() {
                         onChange={() =>
                           updateQuestion(index, (prev) => ({
                             ...prev,
-                            correctOptionIndexes: prev.correctOptionIndexes.includes(
-                              optIdx,
-                            )
+                            correctOptionIndexes: prev.correctOptionIndexes.includes(optIdx)
                               ? prev.correctOptionIndexes.filter((i) => i !== optIdx)
-                              : [...prev.correctOptionIndexes, optIdx].sort(
-                                  (a, b) => a - b,
-                                ),
+                              : [...prev.correctOptionIndexes, optIdx].sort((a, b) => a - b),
                           }))
                         }
                       />
@@ -434,25 +455,20 @@ export default function NewCoursePage() {
                           updateQuestion(index, (prev) => {
                             const nextOptions = [...prev.options];
                             nextOptions[optIdx] = e.target.value;
-                            return {
-                              ...prev,
-                              options: nextOptions,
-                            };
+                            return { ...prev, options: nextOptions };
                           })
                         }
                       />
                     </label>
                   ))}
+
                   <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.2rem" }}>
                     <button
                       type="button"
                       className="btn btn-ghost"
                       style={{ paddingInline: "0.8rem", fontSize: "0.8rem" }}
                       onClick={() =>
-                        updateQuestion(index, (prev) => ({
-                          ...prev,
-                          options: [...prev.options, ""],
-                        }))
+                        updateQuestion(index, (prev) => ({ ...prev, options: [...prev.options, ""] }))
                       }
                     >
                       Válasz hozzáadása
@@ -469,11 +485,7 @@ export default function NewCoursePage() {
                           const nextCorrect = prev.correctOptionIndexes
                             .filter((i) => i !== removeIndex)
                             .filter((i) => i < nextOptions.length);
-                          return {
-                            ...prev,
-                            options: nextOptions,
-                            correctOptionIndexes: nextCorrect,
-                          };
+                          return { ...prev, options: nextOptions, correctOptionIndexes: nextCorrect };
                         })
                       }
                     >
@@ -486,19 +498,11 @@ export default function NewCoursePage() {
           </div>
         </div>
 
-        {error && (
-          <p style={{ color: "#fecaca", fontSize: "0.85rem" }}>{error}</p>
-        )}
-        {uploadError && (
-          <p style={{ color: "#fecaca", fontSize: "0.8rem" }}>{uploadError}</p>
-        )}
+        {error && <p style={{ color: "#fecaca", fontSize: "0.85rem" }}>{error}</p>}
+        {uploadError && <p style={{ color: "#fecaca", fontSize: "0.8rem" }}>{uploadError}</p>}
 
-        <button
-          type="submit"
-          className="btn btn-primary"
-          style={{ marginTop: "0.4rem" }}
-        >
-          Kurzus mentése
+        <button type="submit" className="btn btn-primary" style={{ marginTop: "0.4rem" }} disabled={saving}>
+          {saving ? "Mentés..." : "Változtatások mentése"}
         </button>
       </form>
     </div>

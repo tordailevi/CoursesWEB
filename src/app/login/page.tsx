@@ -38,20 +38,20 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "Login failed.");
+        setError(data.error ?? "Sikertelen belépés.");
         return;
       }
       router.push("/courses");
     } catch {
-      setError("Network error while logging in.");
+      setError("Hálózati hiba belépés közben.");
     }
   }
 
   return (
     <div className="card">
-      <h1>Login</h1>
+      <h1>Belépés</h1>
       <p className="muted" style={{ marginTop: "0.25rem" }}>
-        Log in to save your course progress across devices.
+        Jelentkezz be, hogy a haladásod több eszközön is megmaradjon.
       </p>
       <form
         onSubmit={handleSubmit}
@@ -59,7 +59,7 @@ export default function LoginPage() {
       >
         <div>
           <label className="field-label" htmlFor="username">
-            Username
+            Felhasználónév
           </label>
           <input
             id="username"
@@ -72,7 +72,7 @@ export default function LoginPage() {
         </div>
         <div>
           <label className="field-label" htmlFor="password">
-            Password
+            Jelszó
           </label>
           <input
             id="password"
@@ -93,12 +93,8 @@ export default function LoginPage() {
           style={{ marginTop: "0.4rem" }}
           disabled={checking}
         >
-          {checking ? "Checking session..." : "Sign in"}
+          {checking ? "Munkamenet ellenőrzése..." : "Belépés"}
         </button>
-        <p className="muted" style={{ fontSize: "0.8rem" }}>
-          Demo admin account: username <strong>admin</strong>, password{" "}
-          <strong>admin123</strong>.
-        </p>
       </form>
     </div>
   );

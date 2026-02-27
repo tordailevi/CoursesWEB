@@ -4,8 +4,8 @@ import "./globals.css";
 import { UserMenu } from "@/components/UserMenu";
 
 export const metadata: Metadata = {
-  title: "Course Trainer",
-  description: "Complete courses, answer questions, track your progress.",
+  title: "Kurzus tréner",
+  description: "Kurzusok teljesítése, kérdések megválaszolása, haladás követése.",
 };
 
 export default function RootLayout({
@@ -14,18 +14,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="hu">
       <body>
         <header className="app-header">
           <div className="app-shell">
             <div className="app-header-inner">
               <Link href="/" className="brand">
-                <span className="brand-main">Course Trainer</span>
-                <span className="brand-sub">Practice & track progress</span>
+                <span className="brand-main">Kurzus tréner</span>
+                <span className="brand-sub">Gyakorlás és haladás követése</span>
               </Link>
               <div className="nav">
                 <Link href="/courses" className="nav-link">
-                  Courses
+                  Kurzusok
                 </Link>
                 <UserMenu />
               </div>
