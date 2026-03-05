@@ -22,6 +22,8 @@ export default function AdminProgressPage() {
   const [me, setMe] = useState<MeResponse["user"] | null>(null);
   const [rows, setRows] = useState<ProgressRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -32,15 +34,40 @@ export default function AdminProgressPage() {
         if (!meData.user || meData.user.role !== "admin") {
           return;
         }
-        const res = await fetch("/api/admin/progress");
-        const data = (await res.json()) as { items: ProgressRow[] };
-        setRows(data.items);
       } catch {
         setError("Nem sikerült betölteni az eredményeket.");
       }
     }
     void load();
   }, []);
+
+  useEffect(() => {
+    if (!me || me.role !== "admin") return;
+
+    const handle = window.setTimeout(async () => {
+      try {
+        setError(null);
+        setLoading(true);
+        const url =
+          query.trim().length > 0
+            ? `/api/admin/progress?username=${encodeURIComponent(query.trim())}`
+            : "/api/admin/progress";
+        const res = await fetch(url);
+        const data = (await res.json()) as { items: ProgressRow[]; error?: string };
+        if (!res.ok) {
+          setError(data.error ?? "Nem sikerült betölteni az eredményeket.");
+          return;
+        }
+        setRows(data.items);
+      } catch {
+        setError("Nem sikerült betölteni az eredményeket.");
+      } finally {
+        setLoading(false);
+      }
+    }, 300);
+
+    return () => window.clearTimeout(handle);
+  }, [me, query]);
 
   if (!me) {
     return (
@@ -68,8 +95,24 @@ export default function AdminProgressPage() {
     <div className="card">
       <h1>Felhasználói eredmények</h1>
       <p className="muted" style={{ marginTop: "0.25rem" }}>
-        Minden sor egy felhasználó legutóbbi eredményét mutatja (százalékban).
+        Minden sor egy kurzuskitöltés eredményét mutatja (százalékban).
       </p>
+      <div style={{ marginTop: "0.9rem", display: "flex", gap: "0.6rem" }}>
+        <input
+          className="input"
+          placeholder="Keresés felhasználónévre…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={() => setQuery("")}
+          disabled={loading || !query.trim()}
+        >
+          Törlés
+        </button>
+      </div>
       {error && (
         <p style={{ color: "#fecaca", fontSize: "0.85rem", marginTop: "0.4rem" }}>
           {error}

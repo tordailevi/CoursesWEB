@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getCurrentUserServer } from "@/lib/auth";
 
 function normalizeAnswerIndexes(value: unknown, maxExclusive: number): number[] {
   if (!Array.isArray(value)) return [];
@@ -36,77 +35,14 @@ function parseCorrectOptionIndexes(
   return options.length ? [legacyIdx >= 0 ? legacyIdx : 0] : [];
 }
 
-export async function GET(request: Request) {
-  const user = await getCurrentUserServer();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const { searchParams } = new URL(request.url);
-  const courseSlug = searchParams.get("courseSlug");
-
-  if (!courseSlug) {
-    return NextResponse.json(
-      { error: "courseSlug is required" },
-      { status: 400 },
-    );
-  }
-
-  const course = await prisma.course.findUnique({
-    where: { slug: courseSlug },
-    select: { id: true },
-  });
-
-  if (!course) {
-    return NextResponse.json({ error: "Course not found" }, { status: 404 });
-  }
-
-  const progress = await prisma.courseProgress.findFirst({
-    where: {
-      userId: user.id,
-      courseId: course.id,
-    },
-    orderBy: {
-      updatedAt: "desc",
-    },
-  });
-
-  if (!progress) {
-    return NextResponse.json({ progress: null }, { status: 200 });
-  }
-
-  return NextResponse.json({
-    progress: {
-      courseSlug,
-      completedQuestionIds: JSON.parse(
-        progress.completedQuestionJson,
-      ) as string[],
-      answers: JSON.parse(progress.answersJson) as Record<string, number[]>,
-      score: progress.score,
-      updatedAt: progress.updatedAt,
-    },
-  });
-}
-
 export async function POST(request: Request) {
-  const user = await getCurrentUserServer();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const body = (await request.json()) as {
     courseSlug?: string;
     answers?: Record<string, unknown>;
   };
 
   if (!body.courseSlug || typeof body.courseSlug !== "string") {
-    return NextResponse.json(
-      {
-        error:
-          "courseSlug is required.",
-      },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "courseSlug is required" }, { status: 400 });
   }
 
   const course = await prisma.course.findUnique({
@@ -132,7 +68,7 @@ export async function POST(request: Request) {
   const answerMap = body.answers ?? {};
 
   let correct = 0;
-  const completedIds: string[] = [];
+  const completedQuestionIds: string[] = [];
 
   for (const q of course.questions) {
     let options: string[] = [];
@@ -157,7 +93,7 @@ export async function POST(request: Request) {
 
     if (same) {
       correct += 1;
-      completedIds.push(String(q.id));
+      completedQuestionIds.push(String(q.id));
     }
   }
 
@@ -165,16 +101,6 @@ export async function POST(request: Request) {
     ? Math.round((correct / course.questions.length) * 100)
     : 0;
 
-  const data = {
-    userId: user.id,
-    courseId: course.id,
-    completedQuestionJson: JSON.stringify(completedIds),
-    answersJson: JSON.stringify(body.answers ?? {}),
-    score,
-  };
-
-  await prisma.courseProgress.create({ data });
-
-  return NextResponse.json({ ok: true, score }, { status: 200 });
+  return NextResponse.json({ score, completedQuestionIds }, { status: 200 });
 }
 

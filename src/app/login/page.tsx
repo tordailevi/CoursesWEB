@@ -7,6 +7,7 @@ export default function LoginPage() {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(true);
 
@@ -74,15 +75,24 @@ export default function LoginPage() {
           <label className="field-label" htmlFor="password">
             Jelszó
           </label>
-          <input
-            id="password"
-            type="password"
-            className="input"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-            required
-          />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "0.5rem" }}>
+            <input
+              id="password"
+              type={showPassword ? "text" : "password"}
+              className="input"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+            />
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => setShowPassword((v) => !v)}
+            >
+              {showPassword ? "Elrejtés" : "Megjelenítés"}
+            </button>
+          </div>
         </div>
         {error && (
           <p style={{ color: "#fecaca", fontSize: "0.85rem" }}>{error}</p>

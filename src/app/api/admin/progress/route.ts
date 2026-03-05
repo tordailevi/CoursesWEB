@@ -15,9 +15,10 @@ export async function GET(request: Request) {
     where: username
       ? {
           user: {
-            username: {
-              contains: username,
-              mode: "insensitive",
+            is: {
+              username: {
+                contains: username,
+              },
             },
           },
         }

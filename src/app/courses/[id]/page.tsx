@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { notFound, useParams } from "next/navigation";
+import Link from "next/link";
+import { notFound, useParams, useRouter, useSearchParams } from "next/navigation";
 import { loadGuestProgress, saveGuestProgress } from "@/lib/storage";
 
 type Question = {
@@ -9,7 +10,6 @@ type Question = {
   text: string;
   imageUrl?: string | null;
   options: string[];
-  correctOptionIndexes: number[];
 };
 
 type CourseDto = {
@@ -39,17 +39,20 @@ type AnswerMap = Record<number, number[]>;
 
 export default function CourseDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [course, setCourse] = useState<CourseDto | null>(null);
   const [user, setUser] = useState<MeResponse["user"] | null>(null);
   const [answers, setAnswers] = useState<AnswerMap>({});
-  const [submitted, setSubmitted] = useState(false);
   const [score, setScore] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [notFoundState, setNotFoundState] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
 
   useEffect(() => {
     async function load() {
       try {
+        setError(null);
         const [courseRes, meRes] = await Promise.all([
           fetch(`/api/courses/${params.id}`),
           fetch("/api/auth/me"),
@@ -65,6 +68,13 @@ export default function CourseDetailPage() {
         setCourse(courseData);
         setUser(meData.user);
         setCurrentIndex(0);
+        setAnswers({});
+        setScore(null);
+
+        const retry = searchParams.get("retry") === "1";
+        if (retry) {
+          return;
+        }
 
         const loggedIn = !!meData.user;
         if (loggedIn) {
@@ -87,7 +97,6 @@ export default function CourseDetailPage() {
               }
               setAnswers(previousAnswers);
               setScore(progress.score);
-              setSubmitted(true);
             }
           }
         } else {
@@ -106,7 +115,6 @@ export default function CourseDetailPage() {
             }
             setAnswers(previousAnswers);
             setScore(guest.score >= 0 ? guest.score : null);
-            setSubmitted(guest.score >= 0);
           }
         }
       } catch {
@@ -114,7 +122,7 @@ export default function CourseDetailPage() {
       }
     }
     void load();
-  }, [params.id]);
+  }, [params.id, searchParams]);
 
   const totalQuestions = useMemo(
     () => course?.questions.length ?? 0,
@@ -143,80 +151,88 @@ export default function CourseDetailPage() {
         : [...existing, optionIndex];
       return { ...prev, [questionId]: next };
     });
-    setSubmitted(false);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!course) return;
-
-    let correct = 0;
-    const completedIds: string[] = [];
-
-    course.questions.forEach((q) => {
-      const selected = (answers[q.id] ?? []).slice().sort((a, b) => a - b);
-      const expected = (q.correctOptionIndexes ?? [])
-        .slice()
-        .sort((a, b) => a - b);
-      const same =
-        selected.length === expected.length &&
-        selected.every((v, i) => v === expected[i]);
-
-      if (same) {
-        correct += 1;
-        completedIds.push(String(q.id));
-      }
-    });
-
-    const percent = course.questions.length
-      ? Math.round((correct / course.questions.length) * 100)
-      : 0;
-
-    setSubmitted(true);
-    setScore(percent);
-
+    setError(null);
     const loggedIn = !!user;
 
     if (loggedIn) {
       try {
-        await fetch("/api/progress", {
+        const res = await fetch("/api/progress", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             courseSlug: course.slug,
-            completedQuestionIds: completedIds,
             answers: Object.fromEntries(
               Object.entries(answers).map(([k, v]) => [String(k), v]),
             ),
-            score: percent,
           }),
         });
+        const data = (await res.json()) as { ok?: boolean; score?: number; error?: string };
+        if (!res.ok) {
+          setError(data.error ?? "Nem sikerült elmenteni a válaszokat.");
+          return;
+        }
+        if (typeof data.score === "number") {
+          setScore(data.score);
+        }
       } catch {
-        // ignore
+        setError("Hálózati hiba mentés közben.");
       }
     } else {
-      const all = loadGuestProgress();
-      const existingIndex = all.findIndex((p) => p.courseId === course.slug);
-      const created = {
-        courseId: course.slug,
-        completedQuestionIds: completedIds,
-        answers: Object.fromEntries(
-          Object.entries(answers).map(([k, v]) => [String(k), v]),
-        ),
-        score: percent,
-      };
-      if (existingIndex === -1) {
-        saveGuestProgress([...all, created]);
-      } else {
-        const copy = [...all];
-        copy[existingIndex] = created;
-        saveGuestProgress(copy);
+      try {
+        const res = await fetch("/api/progress/compute", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            courseSlug: course.slug,
+            answers: Object.fromEntries(
+              Object.entries(answers).map(([k, v]) => [String(k), v]),
+            ),
+          }),
+        });
+        const data = (await res.json()) as {
+          score?: number;
+          completedQuestionIds?: string[];
+          error?: string;
+        };
+        if (!res.ok) {
+          setError(data.error ?? "Nem sikerült kiszámolni az eredményt.");
+          return;
+        }
+
+        const all = loadGuestProgress();
+        const existingIndex = all.findIndex((p) => p.courseId === course.slug);
+        const created = {
+          courseId: course.slug,
+          completedQuestionIds: Array.isArray(data.completedQuestionIds)
+            ? data.completedQuestionIds
+            : [],
+          answers: Object.fromEntries(
+            Object.entries(answers).map(([k, v]) => [String(k), v]),
+          ),
+          score: typeof data.score === "number" ? data.score : 0,
+        };
+        if (existingIndex === -1) {
+          saveGuestProgress([...all, created]);
+        } else {
+          const copy = [...all];
+          copy[existingIndex] = created;
+          saveGuestProgress(copy);
+        }
+
+        setScore(created.score);
+      } catch {
+        setError("Hálózati hiba mentés közben.");
       }
     }
   }
 
   const percentLabel =
-    submitted && score !== null ? `${score}%` : "Nincs elmentve";
+    score !== null ? `${score}%` : "Nincs elmentve";
 
   const currentQuestion = course.questions[currentIndex];
   const isLast = currentIndex === totalQuestions - 1;
@@ -224,10 +240,17 @@ export default function CourseDetailPage() {
   return (
     <div className="card-grid">
       <section className="card">
-        <h1>{course.title}</h1>
-        <p className="muted" style={{ marginTop: "0.2rem" }}>
-          {course.description}
-        </p>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem" }}>
+          <div>
+            <h1>{course.title}</h1>
+            <p className="muted" style={{ marginTop: "0.2rem" }}>
+              {course.description}
+            </p>
+          </div>
+          <Link href="/courses" className="btn btn-ghost">
+            Főoldal
+          </Link>
+        </div>
         <p className="muted" style={{ marginTop: "0.4rem", fontSize: "0.8rem" }}>
           {user
             ? `Bejelentkezve mint ${user.username}. A haladás a fiókodhoz mentődik.`
@@ -301,10 +324,6 @@ export default function CourseDetailPage() {
               {currentQuestion.options.map((opt, optIdx) => {
                 const selected = answers[currentQuestion.id] ?? [];
                 const isSelected = selected.includes(optIdx);
-                const isCorrect = submitted
-                  ? (currentQuestion.correctOptionIndexes ?? []).includes(optIdx)
-                  : false;
-                const isWrongSelected = submitted && isSelected && !isCorrect;
 
                 return (
                   <label
@@ -317,13 +336,9 @@ export default function CourseDetailPage() {
                       borderRadius: "999px",
                       border: "1px solid rgba(148, 163, 184, 0.4)",
                       cursor: "pointer",
-                      backgroundColor: isCorrect
-                        ? "rgba(34, 197, 94, 0.15)"
-                        : isWrongSelected
-                          ? "rgba(239, 68, 68, 0.18)"
-                          : isSelected
-                            ? "rgba(56, 189, 248, 0.12)"
-                            : "transparent",
+                      backgroundColor: isSelected
+                        ? "rgba(56, 189, 248, 0.12)"
+                        : "transparent",
                     }}
                   >
                     <input
@@ -372,9 +387,14 @@ export default function CourseDetailPage() {
                 </button>
               )}
             </div>
-            <p className="muted" style={{ fontSize: "0.85rem" }}>
-              Mentett eredmény: {percentLabel}
-            </p>
+            <div style={{ display: "grid", justifyItems: "end", gap: "0.25rem" }}>
+              <p className="muted" style={{ fontSize: "0.85rem" }}>
+                Mentett eredmény: {percentLabel}
+              </p>
+              {error && (
+                <p style={{ color: "#fecaca", fontSize: "0.85rem" }}>{error}</p>
+              )}
+            </div>
           </div>
         </form>
       </section>

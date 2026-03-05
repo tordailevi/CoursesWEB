@@ -9,6 +9,9 @@ type Params = {
 };
 
 export async function GET(_req: Request, context: Params) {
+  const me = await getCurrentUserServer();
+  const isAdmin = !!me && me.role === "admin";
+
   const { slug } = await context.params;
   const course = await prisma.course.findUnique({
     where: { slug },
@@ -51,6 +54,17 @@ export async function GET(_req: Request, context: Params) {
         options = [];
       }
 
+      const base = {
+        id: q.id,
+        text: q.text,
+        imageUrl: q.imageUrl,
+        options,
+      };
+
+      if (!isAdmin) {
+        return base;
+      }
+
       let correctOptionIndexes: number[] = [];
       try {
         const parsed = JSON.parse(q.correctOptionIndexesJson) as unknown;
@@ -71,13 +85,7 @@ export async function GET(_req: Request, context: Params) {
         correctOptionIndexes = [legacyIdx >= 0 ? legacyIdx : 0];
       }
 
-      return {
-        id: q.id,
-        text: q.text,
-        imageUrl: q.imageUrl,
-        options,
-        correctOptionIndexes,
-      };
+      return { ...base, correctOptionIndexes };
     }),
   };
 

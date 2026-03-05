@@ -2,6 +2,10 @@
 
 import { useEffect, useState } from "react";
 
+function passwordMeetsRules(password: string) {
+  return /[A-Z]/.test(password) && /\d/.test(password);
+}
+
 type MeResponse = {
   user: {
     id: number;
@@ -24,7 +28,13 @@ export default function AdminUsersPage() {
   const [creating, setCreating] = useState(false);
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
   const [newIsAdmin, setNewIsAdmin] = useState(false);
+  const [resetUserId, setResetUserId] = useState<number | "">("");
+  const [resetPassword, setResetPassword] = useState("");
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -72,8 +82,13 @@ export default function AdminUsersPage() {
       setError("A felhasználónév és a jelszó megadása kötelező.");
       return;
     }
+    if (!passwordMeetsRules(newPassword)) {
+      setError("A jelszónak tartalmaznia kell legalább 1 nagybetűt és 1 számot.");
+      return;
+    }
     try {
       setError(null);
+      setSuccess(null);
       setCreating(true);
       const res = await fetch("/api/admin/users", {
         method: "POST",
@@ -99,6 +114,39 @@ export default function AdminUsersPage() {
       setError("Hálózati hiba felhasználó létrehozása közben.");
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function resetUserPassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (!resetUserId || !resetPassword.trim()) {
+      setError("Válassz felhasználót és adj meg egy új jelszót.");
+      return;
+    }
+    if (!passwordMeetsRules(resetPassword)) {
+      setError("A jelszónak tartalmaznia kell legalább 1 nagybetűt és 1 számot.");
+      return;
+    }
+    try {
+      setError(null);
+      setSuccess(null);
+      setResetting(true);
+      const res = await fetch("/api/admin/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: resetUserId, password: resetPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Nem sikerült beállítani az új jelszót.");
+        return;
+      }
+      setResetPassword("");
+      setSuccess("Jelszó frissítve.");
+    } catch {
+      setError("Hálózati hiba jelszó frissítése közben.");
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -157,6 +205,11 @@ export default function AdminUsersPage() {
           {error}
         </p>
       )}
+      {success && (
+        <p style={{ color: "#bbf7d0", fontSize: "0.85rem", marginTop: "0.4rem" }}>
+          {success}
+        </p>
+      )}
       <form
         onSubmit={createUser}
         style={{
@@ -194,13 +247,23 @@ export default function AdminUsersPage() {
             value={newUsername}
             onChange={(e) => setNewUsername(e.target.value)}
           />
-          <input
-            className="input"
-            type="password"
-            placeholder="Jelszó"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-          />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "0.5rem" }}>
+            <input
+              className="input"
+              type={showNewPassword ? "text" : "password"}
+              placeholder="Jelszó"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+            />
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => setShowNewPassword((v) => !v)}
+              style={{ paddingInline: "0.7rem", fontSize: "0.8rem" }}
+            >
+              {showNewPassword ? "Elrejtés" : "Megjelenítés"}
+            </button>
+          </div>
           <label
             style={{
               display: "flex",
@@ -225,6 +288,80 @@ export default function AdminUsersPage() {
         >
           {creating ? "Létrehozás..." : "Felhasználó létrehozása"}
         </button>
+      </form>
+
+      <form
+        onSubmit={resetUserPassword}
+        style={{
+          marginTop: "0.6rem",
+          marginBottom: "1.1rem",
+          padding: "0.8rem 0.9rem",
+          borderRadius: "10px",
+          border: "1px solid rgba(148, 163, 184, 0.4)",
+          backgroundColor: "rgba(15, 23, 42, 0.85)",
+          display: "grid",
+          gap: "0.6rem",
+        }}
+      >
+        <div
+          style={{
+            fontSize: "0.8rem",
+            textTransform: "uppercase",
+            letterSpacing: "0.08em",
+            color: "var(--text-muted)",
+          }}
+        >
+          Jelszó visszaállítás
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "2fr 2fr auto",
+            gap: "0.6rem",
+            alignItems: "center",
+          }}
+        >
+          <select
+            className="input"
+            value={resetUserId}
+            onChange={(e) => setResetUserId(e.target.value ? Number(e.target.value) : "")}
+          >
+            <option value="">Válassz felhasználót…</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.username}
+              </option>
+            ))}
+          </select>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "0.5rem" }}>
+            <input
+              className="input"
+              type={showResetPassword ? "text" : "password"}
+              placeholder="Új jelszó"
+              value={resetPassword}
+              onChange={(e) => setResetPassword(e.target.value)}
+            />
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => setShowResetPassword((v) => !v)}
+              style={{ paddingInline: "0.7rem", fontSize: "0.8rem" }}
+            >
+              {showResetPassword ? "Elrejtés" : "Megjelenítés"}
+            </button>
+          </div>
+          <button
+            type="submit"
+            className="btn btn-primary"
+            style={{ width: "fit-content" }}
+            disabled={resetting}
+          >
+            {resetting ? "Mentés..." : "Mentés"}
+          </button>
+        </div>
+        <p className="muted" style={{ marginTop: "0.1rem", fontSize: "0.8rem" }}>
+          A meglévő jelszavak nem visszafejthetők; itt újat tudsz beállítani.
+        </p>
       </form>
 
       <div style={{ marginTop: "0.2rem" }}>

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { loadGuestProgress } from "@/lib/storage";
 
 type CourseListItem = {
   id: number;
@@ -19,9 +20,16 @@ type MeResponse = {
   } | null;
 };
 
+type ProgressSummaryItem = {
+  courseSlug: string;
+  score: number;
+  updatedAt: string;
+};
+
 export default function CoursesPage() {
   const [courses, setCourses] = useState<CourseListItem[]>([]);
   const [user, setUser] = useState<MeResponse["user"] | null>(null);
+  const [progressBySlug, setProgressBySlug] = useState<Record<string, number>>({});
 
   useEffect(() => {
     async function load() {
@@ -34,6 +42,27 @@ export default function CoursesPage() {
         const meData = (await meRes.json()) as MeResponse;
         setCourses(coursesData);
         setUser(meData.user);
+
+        if (meData.user) {
+          const progressRes = await fetch("/api/progress/summary");
+          if (progressRes.ok) {
+            const data = (await progressRes.json()) as {
+              items: ProgressSummaryItem[];
+            };
+            const map: Record<string, number> = {};
+            for (const item of data.items ?? []) {
+              map[item.courseSlug] = item.score;
+            }
+            setProgressBySlug(map);
+          }
+        } else {
+          const guest = loadGuestProgress();
+          const map: Record<string, number> = {};
+          for (const p of guest) {
+            map[p.courseId] = p.score;
+          }
+          setProgressBySlug(map);
+        }
       } catch {
         // ignore for now, UI will just show empty state
       }
@@ -60,7 +89,14 @@ export default function CoursesPage() {
         </div>
 
         <ul style={{ marginTop: "1.4rem", display: "grid", gap: "0.7rem" }}>
-          {courses.map((course) => (
+          {courses.map((course) => {
+            const savedScore =
+              typeof progressBySlug[course.slug] === "number"
+                ? progressBySlug[course.slug]
+                : null;
+            const hasProgress = savedScore !== null && savedScore >= 0;
+
+            return (
             <li
               key={course.id}
               style={{
@@ -71,20 +107,54 @@ export default function CoursesPage() {
                 backgroundColor: "rgba(15, 23, 42, 0.9)",
               }}
             >
-              <Link
-                href={`/courses/${course.slug}`}
-                style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: "1rem",
+                  alignItems: "flex-start",
+                }}
               >
-                <span style={{ fontWeight: 550 }}>{course.title}</span>
-                <span className="muted" style={{ fontSize: "0.85rem" }}>
-                  {course.description}
-                </span>
-                <span className="muted" style={{ fontSize: "0.8rem" }}>
-                  {course.questionCount} kérdés
-                </span>
-              </Link>
+                <Link
+                  href={`/courses/${course.slug}`}
+                  style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}
+                >
+                  <span style={{ fontWeight: 550 }}>{course.title}</span>
+                  <span className="muted" style={{ fontSize: "0.85rem" }}>
+                    {course.description}
+                  </span>
+                  <span className="muted" style={{ fontSize: "0.8rem" }}>
+                    {course.questionCount} kérdés
+                  </span>
+                  {hasProgress && (
+                    <span className="muted" style={{ fontSize: "0.8rem" }}>
+                      Előző eredmény: {savedScore}%
+                    </span>
+                  )}
+                </Link>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+                  <Link
+                    href={`/courses/${course.slug}`}
+                    className="btn btn-primary"
+                    style={{ textAlign: "center" }}
+                  >
+                    {hasProgress ? "Folytatás" : "Kezdés"}
+                  </Link>
+                  {hasProgress && (
+                    <Link
+                      href={`/courses/${course.slug}?retry=1`}
+                      className="btn btn-ghost"
+                      style={{ textAlign: "center" }}
+                    >
+                      Újrapróbálkozás
+                    </Link>
+                  )}
+                </div>
+              </div>
             </li>
-          ))}
+            );
+          })}
           {courses.length === 0 && (
             <li className="muted" style={{ listStyle: "none" }}>
               Még nincs kurzus.{" "}

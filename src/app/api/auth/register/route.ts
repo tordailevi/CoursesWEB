@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { hashPassword, setSessionUser } from "@/lib/auth";
 
+function passwordMeetsRules(password: string) {
+  return /[A-Z]/.test(password) && /\d/.test(password);
+}
+
 export async function POST(request: Request) {
   try {
     const { username, password } = (await request.json()) as {
@@ -12,6 +16,15 @@ export async function POST(request: Request) {
     if (!username || !password) {
       return NextResponse.json(
         { error: "Username and password are required." },
+        { status: 400 },
+      );
+    }
+
+    if (!passwordMeetsRules(password)) {
+      return NextResponse.json(
+        {
+          error: "Password must contain at least one uppercase letter and one number.",
+        },
         { status: 400 },
       );
     }

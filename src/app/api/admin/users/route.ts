@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUserServer, hashPassword } from "@/lib/auth";
 
+function passwordMeetsRules(password: string) {
+  return /[A-Z]/.test(password) && /\d/.test(password);
+}
+
 export async function GET() {
   const me = await getCurrentUserServer();
   if (!me || me.role !== "admin") {
@@ -41,6 +45,15 @@ export async function POST(request: Request) {
   if (!body.username || !body.password) {
     return NextResponse.json(
       { error: "Username and password are required." },
+      { status: 400 },
+    );
+  }
+
+  if (!passwordMeetsRules(body.password)) {
+    return NextResponse.json(
+      {
+        error: "Password must contain at least one uppercase letter and one number.",
+      },
       { status: 400 },
     );
   }
@@ -93,18 +106,56 @@ export async function PATCH(request: Request) {
   const body = (await request.json()) as {
     id?: number;
     role?: string;
+    password?: string;
   };
 
-  if (!body.id || (body.role !== "user" && body.role !== "admin")) {
+  if (!body.id) {
     return NextResponse.json(
-      { error: "id and role ('user' | 'admin') are required." },
+      { error: "id is required." },
+      { status: 400 },
+    );
+  }
+
+  const data: { role?: "user" | "admin"; passwordHash?: string } = {};
+
+  if (body.role) {
+    if (body.role !== "user" && body.role !== "admin") {
+      return NextResponse.json(
+        { error: "role must be 'user' or 'admin'." },
+        { status: 400 },
+      );
+    }
+    data.role = body.role;
+  }
+
+  if (typeof body.password === "string") {
+    if (!body.password.trim()) {
+      return NextResponse.json(
+        { error: "password cannot be empty." },
+        { status: 400 },
+      );
+    }
+    if (!passwordMeetsRules(body.password)) {
+      return NextResponse.json(
+        {
+          error: "Password must contain at least one uppercase letter and one number.",
+        },
+        { status: 400 },
+      );
+    }
+    data.passwordHash = await hashPassword(body.password);
+  }
+
+  if (!data.role && !data.passwordHash) {
+    return NextResponse.json(
+      { error: "Nothing to update." },
       { status: 400 },
     );
   }
 
   await prisma.user.update({
     where: { id: body.id },
-    data: { role: body.role },
+    data,
   });
 
   return NextResponse.json({ ok: true });

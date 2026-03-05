@@ -3,16 +3,30 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+function passwordMeetsRules(password: string) {
+  return /[A-Z]/.test(password) && /\d/.test(password);
+}
+
 export default function RegisterPage() {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
     setError(null);
+    if (password !== confirmPassword) {
+      setError("A két jelszó nem egyezik.");
+      return;
+    }
+    if (!passwordMeetsRules(password)) {
+      setError("A jelszónak tartalmaznia kell legalább 1 nagybetűt és 1 számot.");
+      return;
+    }
     try {
       const res = await fetch("/api/auth/register", {
         method: "POST",
@@ -58,12 +72,38 @@ export default function RegisterPage() {
           <label className="field-label" htmlFor="password">
             Jelszó
           </label>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "0.5rem" }}>
+            <input
+              id="password"
+              type={showPassword ? "text" : "password"}
+              className="input"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="new-password"
+              required
+            />
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => setShowPassword((v) => !v)}
+            >
+              {showPassword ? "Elrejtés" : "Megjelenítés"}
+            </button>
+          </div>
+          <p className="muted" style={{ marginTop: "0.35rem", fontSize: "0.8rem" }}>
+            Legalább 1 nagybetű és 1 szám kötelező.
+          </p>
+        </div>
+        <div>
+          <label className="field-label" htmlFor="confirmPassword">
+            Jelszó megerősítése
+          </label>
           <input
-            id="password"
-            type="password"
+            id="confirmPassword"
+            type={showPassword ? "text" : "password"}
             className="input"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
             autoComplete="new-password"
             required
           />
