@@ -27,12 +27,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Course not found" }, { status: 404 });
   }
 
-  const progress = await prisma.courseProgress.findUnique({
+  const progress = await prisma.courseProgress.findFirst({
     where: {
-      userId_courseId: {
-        userId: user.id,
-        courseId: course.id,
-      },
+      userId: user.id,
+      courseId: course.id,
+    },
+    orderBy: {
+      updatedAt: "desc",
     },
   });
 
@@ -85,15 +86,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Course not found" }, { status: 404 });
   }
 
-  const existing = await prisma.courseProgress.findUnique({
-    where: {
-      userId_courseId: {
-        userId: user.id,
-        courseId: course.id,
-      },
-    },
-  });
-
   const data = {
     userId: user.id,
     courseId: course.id,
@@ -102,14 +94,7 @@ export async function POST(request: Request) {
     score: body.score,
   };
 
-  if (existing) {
-    await prisma.courseProgress.update({
-      where: { userId_courseId: { userId: user.id, courseId: course.id } },
-      data,
-    });
-  } else {
-    await prisma.courseProgress.create({ data });
-  }
+  await prisma.courseProgress.create({ data });
 
   return NextResponse.json({ ok: true }, { status: 200 });
 }
