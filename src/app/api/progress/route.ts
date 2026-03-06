@@ -54,7 +54,7 @@ export async function GET(request: Request) {
 
   const course = await prisma.course.findUnique({
     where: { slug: courseSlug },
-    select: { id: true },
+    select: { id: true, maxAttemptsPerUser: true },
   });
 
   if (!course) {
@@ -72,7 +72,16 @@ export async function GET(request: Request) {
   });
 
   if (!progress) {
-    return NextResponse.json({ progress: null }, { status: 200 });
+    return NextResponse.json(
+      {
+        progress: null,
+        attemptInfo: {
+          attemptCount: 0,
+          maxAttemptsPerUser: course.maxAttemptsPerUser,
+        },
+      },
+      { status: 200 },
+    );
   }
 
   return NextResponse.json({
@@ -84,6 +93,10 @@ export async function GET(request: Request) {
       answers: JSON.parse(progress.answersJson) as Record<string, number[]>,
       score: progress.score,
       updatedAt: progress.updatedAt,
+    },
+    attemptInfo: {
+      attemptCount: progress.attemptCount ?? 0,
+      maxAttemptsPerUser: course.maxAttemptsPerUser,
     },
   });
 }
@@ -113,6 +126,7 @@ export async function POST(request: Request) {
     where: { slug: body.courseSlug },
     select: {
       id: true,
+      maxAttemptsPerUser: true,
       questions: {
         select: {
           id: true,
@@ -165,16 +179,151 @@ export async function POST(request: Request) {
     ? Math.round((correct / course.questions.length) * 100)
     : 0;
 
-  const data = {
-    userId: user.id,
-    courseId: course.id,
-    completedQuestionJson: JSON.stringify(completedIds),
-    answersJson: JSON.stringify(body.answers ?? {}),
-    score,
-  };
+  // Hány kérdésre adott egyáltalán választ (függetlenül attól, hogy helyes-e)?
+  const answeredIds = new Set<string>();
+  for (const q of course.questions) {
+    const selected = normalizeAnswerIndexes(answerMap[String(q.id)], Infinity);
+    if (selected.length > 0) {
+      answeredIds.add(String(q.id));
+    }
+  }
+  const totalQuestions = course.questions.length;
+  const isFullAttempt = totalQuestions > 0 && answeredIds.size === totalQuestions;
 
-  await prisma.courseProgress.create({ data });
+  // Legutóbbi eredmény a felhasználó–kurzus párra
+  const previous = await prisma.courseProgress.findFirst({
+    where: {
+      userId: user.id,
+      courseId: course.id,
+    },
+    orderBy: {
+      updatedAt: "desc",
+    },
+  });
 
-  return NextResponse.json({ ok: true, score }, { status: 200 });
+  const maxAttempts = course.maxAttemptsPerUser ?? null;
+  const previousAttempts =
+    previous && typeof previous.attemptCount === "number" && previous.attemptCount > 0
+      ? previous.attemptCount
+      : 0;
+
+  // Limit ellenőrzése: csak teljes kurzuskitöltés esetén számít a próbálkozás
+  if (isFullAttempt && maxAttempts != null && previousAttempts >= maxAttempts) {
+    return NextResponse.json(
+      {
+        error: "Elérted a maximális kitöltésszámot ennél a kurzusnál.",
+        attemptInfo: {
+          attemptCount: previousAttempts,
+          maxAttemptsPerUser: maxAttempts,
+        },
+      },
+      { status: 400 },
+    );
+  }
+
+  const normalizedNewAnswers = JSON.stringify(body.answers ?? {});
+
+  // Ha a válaszok megegyeznek a legutóbbi mentett eredménnyel,
+  // akkor csak akkor számolunk új próbálkozást,
+  // ha nem egy azonnali duplikált kérésről van szó (pl. dev módban),
+  // és ha teljes kurzuskitöltésről van szó.
+  if (previous && previous.answersJson === normalizedNewAnswers) {
+    const now = new Date();
+    const lastUpdated = previous.updatedAt instanceof Date
+      ? previous.updatedAt
+      : new Date(previous.updatedAt as unknown as string);
+    const diffMs = now.getTime() - lastUpdated.getTime();
+
+    // 1,5 másodpercen belüli, azonos tartalmú duplikált kérés: NEM növeljük a számlálót.
+    if (diffMs < 1500) {
+      return NextResponse.json(
+        {
+          ok: true,
+          score: previous.score,
+          attemptInfo: {
+            attemptCount: previousAttempts,
+            maxAttemptsPerUser: maxAttempts,
+          },
+          duplicate: true,
+        },
+        { status: 200 },
+      );
+    }
+
+    // Ha nem teljes kitöltés, akkor csak az állapotot frissítjük, a próbálkozásszámot nem.
+    if (!isFullAttempt) {
+      const updated = await prisma.courseProgress.update({
+        where: { id: previous.id },
+        data: {
+          completedQuestionJson: JSON.stringify(completedIds),
+          answersJson: normalizedNewAnswers,
+          score,
+        },
+      });
+
+      return NextResponse.json(
+        {
+          ok: true,
+          score: updated.score,
+          attemptInfo: {
+            attemptCount: previousAttempts,
+            maxAttemptsPerUser: maxAttempts,
+          },
+        },
+        { status: 200 },
+      );
+    }
+  }
+
+  // Új vagy módosított eredmény mentése
+  const nextAttemptCount = isFullAttempt ? previousAttempts + 1 : previousAttempts;
+
+  if (previous) {
+    const updated = await prisma.courseProgress.update({
+      where: { id: previous.id },
+      data: {
+        completedQuestionJson: JSON.stringify(completedIds),
+        answersJson: normalizedNewAnswers,
+        score,
+        attemptCount: nextAttemptCount,
+      },
+    });
+
+    return NextResponse.json(
+      {
+        ok: true,
+        score: updated.score,
+        attemptInfo: {
+          attemptCount: updated.attemptCount ?? 0,
+          maxAttemptsPerUser: maxAttempts,
+        },
+      },
+      { status: 200 },
+    );
+  }
+
+  // Még nem volt korábbi eredmény: első mentés
+  const created = await prisma.courseProgress.create({
+    data: {
+      userId: user.id,
+      courseId: course.id,
+      completedQuestionJson: JSON.stringify(completedIds),
+      answersJson: normalizedNewAnswers,
+      score,
+      attemptCount: isFullAttempt ? 1 : 0,
+    },
+  });
+
+  return NextResponse.json(
+    {
+      ok: true,
+      score: created.score,
+      attemptInfo: {
+        attemptCount: created.attemptCount ?? 0,
+        maxAttemptsPerUser: maxAttempts,
+      },
+    },
+    { status: 200 },
+  );
 }
 

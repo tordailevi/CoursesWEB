@@ -36,6 +36,7 @@ export default function NewCoursePage() {
   const [error, setError] = useState<string | null>(null);
   const [uploadingForId, setUploadingForId] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [attemptLimitInput, setAttemptLimitInput] = useState<string>("");
 
   useEffect(() => {
     async function load() {
@@ -83,6 +84,10 @@ export default function NewCoursePage() {
         correctOptionIndexes: [],
       },
     ]);
+  }
+
+  function removeQuestion(index: number) {
+    setQuestions((prev) => prev.filter((_, i) => i !== index));
   }
 
   async function handleImageDrop(questionId: string, file: File) {
@@ -170,6 +175,18 @@ export default function NewCoursePage() {
       });
     }
 
+    let maxAttemptsPerUser: number | null = null;
+    const trimmedLimit = attemptLimitInput.trim();
+    if (trimmedLimit.length > 0) {
+      const parsed = Number(trimmedLimit);
+      if (!Number.isNaN(parsed) && Number.isInteger(parsed) && parsed > 0) {
+        maxAttemptsPerUser = parsed;
+      } else {
+        setError("A kitöltési limitnek pozitív egész számnak kell lennie, vagy hagyd üresen a végtelenhez.");
+        return;
+      }
+    }
+
     try {
       const res = await fetch("/api/courses", {
         method: "POST",
@@ -178,6 +195,7 @@ export default function NewCoursePage() {
           title: title.trim(),
           description: description.trim() || "Custom course",
           questions: preparedQuestions,
+          maxAttemptsPerUser,
         }),
       });
 
@@ -232,6 +250,51 @@ export default function NewCoursePage() {
         </div>
 
         <div>
+          <label className="field-label" htmlFor="attemptLimit">
+            Maximális kitöltések száma / felhasználó
+          </label>
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+            <input
+              id="attemptLimit"
+              className="input"
+              style={{ maxWidth: "160px" }}
+              placeholder="pl. 3 vagy üres = végtelen"
+              value={attemptLimitInput}
+              onChange={(e) => setAttemptLimitInput(e.target.value)}
+            />
+            <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                style={{ paddingInline: "0.6rem", fontSize: "0.8rem" }}
+                onClick={() => setAttemptLimitInput("1")}
+              >
+                1
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                style={{ paddingInline: "0.6rem", fontSize: "0.8rem" }}
+                onClick={() => setAttemptLimitInput("5")}
+              >
+                5
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                style={{ paddingInline: "0.6rem", fontSize: "0.8rem" }}
+                onClick={() => setAttemptLimitInput("")}
+              >
+                Végtelen
+              </button>
+            </div>
+          </div>
+          <p className="muted" style={{ fontSize: "0.8rem", marginTop: "0.25rem" }}>
+            Ha üresen hagyod, a kurzus korlátlanul tölthető ki.
+          </p>
+        </div>
+
+        <div>
           <div
             style={{
               display: "flex",
@@ -267,6 +330,7 @@ export default function NewCoursePage() {
                     display: "flex",
                     justifyContent: "space-between",
                     marginBottom: "0.35rem",
+                    gap: "0.6rem",
                   }}
                 >
                   <span
@@ -279,6 +343,15 @@ export default function NewCoursePage() {
                   >
                     Question {index + 1}
                   </span>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{ paddingInline: "0.7rem", fontSize: "0.8rem" }}
+                    disabled={questions.length <= 1}
+                    onClick={() => removeQuestion(index)}
+                  >
+                    Kérdés törlése
+                  </button>
                 </div>
                 <div style={{ display: "grid", gap: "0.4rem" }}>
                   <input

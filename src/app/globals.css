@@ -168,6 +168,7 @@ a {
   border: 1px solid rgba(148, 163, 184, 0.35);
   box-shadow: var(--shadow-soft);
   animation: fadeUp 520ms var(--ease-out) both;
+  overflow: hidden;
 }
 
 .question-panel {
@@ -220,7 +221,7 @@ a {
 
 .btn-primary:hover {
   filter: brightness(1.05);
-  transform: translateY(-1px);
+  transform: translateY(-1px) scale(1.02);
 }
 
 .btn-ghost {
@@ -232,7 +233,49 @@ a {
 .btn-ghost:hover {
   background-color: rgba(15, 23, 42, 1);
   border-color: var(--accent);
-  transform: translateY(-1px);
+  transform: translateY(-1px) scale(1.01);
+}
+
+.card::before {
+  content: "";
+  position: absolute;
+  inset: -40%;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(56, 189, 248, 0.2), transparent 55%),
+    radial-gradient(circle at 100% 100%, rgba(129, 140, 248, 0.18), transparent 55%);
+  opacity: 0;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  transform: translate3d(-10%, 10%, 0) scale(1.05);
+  transition: opacity 0.4s var(--ease-soft), transform 0.4s var(--ease-soft);
+}
+
+.card:hover::before {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1.08);
+}
+
+.question-panel {
+  animation: questionIn 420ms var(--ease-out) both;
+  position: relative;
+  overflow: hidden;
+}
+
+.question-panel::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 2px;
+  background: linear-gradient(to right, transparent, var(--accent), transparent);
+  opacity: 0;
+  transform: translate3d(-40%, 0, 0);
+  transition: opacity 0.35s var(--ease-soft), transform 0.35s var(--ease-soft);
+}
+
+.question-panel:hover::after {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
 }
 
 @keyframes fadeUp {

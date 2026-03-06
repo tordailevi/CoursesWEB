@@ -26,6 +26,9 @@ model Course {
   description String
   questions   Question[]
   progress    CourseProgress[]
+  /// Maximum number of attempts per user for this course.
+  /// Null means unlimited attempts.
+  maxAttemptsPerUser Int?
 }
 
 model Question {
@@ -49,6 +52,9 @@ model CourseProgress {
   answersJson           String   @default("{}") // JSON-encoded Record<string, number[]> for selected options
   score                 Int
   updatedAt             DateTime @updatedAt
+  /// How many times the user has submitted answers for this course.
+  /// Starts from 1 for the first successful submission.
+  attemptCount          Int      @default(1)
 
   @@index([userId, courseId])
 }

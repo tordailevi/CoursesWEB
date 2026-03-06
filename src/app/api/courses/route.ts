@@ -59,6 +59,8 @@ export async function GET() {
           slug: course.slug,
           title: course.title,
           description: course.description,
+          // Alap kurzusok: végtelen kitöltési lehetőség (null = végtelen)
+          maxAttemptsPerUser: null,
           questions: {
             create: course.questions.map((q) => ({
               text: q.text,
@@ -105,7 +107,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const { title, description, questions } = (await request.json()) as {
+  const { title, description, questions, maxAttemptsPerUser } = (await request.json()) as {
     title?: string;
     description?: string;
     questions?: {
@@ -115,6 +117,7 @@ export async function POST(request: Request) {
       answer?: string;
       correctOptionIndexes?: number[];
     }[];
+    maxAttemptsPerUser?: number | null;
   };
 
   if (!title || !questions || questions.length === 0) {
@@ -123,6 +126,11 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+
+  const normalizedMaxAttempts =
+    typeof maxAttemptsPerUser === "number" && Number.isInteger(maxAttemptsPerUser) && maxAttemptsPerUser > 0
+      ? maxAttemptsPerUser
+      : null;
 
   const baseSlug = title.toLowerCase().replace(/\s+/g, "-");
   let slug = baseSlug;
@@ -147,6 +155,7 @@ export async function POST(request: Request) {
       slug,
       title,
       description: description ?? "",
+      maxAttemptsPerUser: normalizedMaxAttempts,
       questions: {
         create: questions.map((q) => ({
           text: q.text,

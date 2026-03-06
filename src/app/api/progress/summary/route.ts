@@ -10,14 +10,19 @@ export async function GET() {
 
   const progresses = await prisma.courseProgress.findMany({
     where: { userId: user.id },
-    orderBy: { updatedAt: "desc" },
+    orderBy: [{ score: "desc" }, { updatedAt: "desc" }],
     include: {
-      course: { select: { slug: true } },
+      course: { select: { slug: true, title: true } },
     },
   });
 
   const seen = new Set<string>();
-  const items: { courseSlug: string; score: number; updatedAt: string }[] = [];
+  const items: {
+    courseSlug: string;
+    courseTitle: string;
+    score: number;
+    updatedAt: string;
+  }[] = [];
 
   for (const p of progresses) {
     const slug = p.course.slug;
@@ -25,6 +30,7 @@ export async function GET() {
     seen.add(slug);
     items.push({
       courseSlug: slug,
+      courseTitle: p.course.title,
       score: p.score,
       updatedAt: p.updatedAt.toISOString(),
     });

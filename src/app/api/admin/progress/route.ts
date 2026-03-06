@@ -41,3 +41,42 @@ export async function GET(request: Request) {
   return NextResponse.json({ items });
 }
 
+export async function DELETE(request: Request) {
+  const me = await getCurrentUserServer();
+  if (!me || me.role !== "admin") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  let body: { id?: number; all?: boolean } = {};
+  try {
+    body = (await request.json()) as { id?: number; all?: boolean };
+  } catch {
+    // ignore, will validate below
+  }
+
+  if (body.all) {
+    const result = await prisma.courseProgress.deleteMany({});
+    return NextResponse.json({ ok: true, deleted: result.count });
+  }
+
+  if (typeof body.id !== "number") {
+    return NextResponse.json(
+      { error: "Az 'id' mező kötelező az egyedi törléshez." },
+      { status: 400 },
+    );
+  }
+
+  try {
+    await prisma.courseProgress.delete({
+      where: { id: body.id },
+    });
+  } catch {
+    return NextResponse.json(
+      { error: "Nem sikerült törölni az eredményt (lehet, hogy már nem létezik)." },
+      { status: 400 },
+    );
+  }
+
+  return NextResponse.json({ ok: true });
+}
+

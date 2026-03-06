@@ -20,6 +20,7 @@ export async function GET(_req: Request, context: Params) {
       slug: true,
       title: true,
       description: true,
+      maxAttemptsPerUser: true,
       questions: {
         select: {
           id: true,
@@ -43,6 +44,7 @@ export async function GET(_req: Request, context: Params) {
     slug: course.slug,
     title: course.title,
     description: course.description,
+    maxAttemptsPerUser: course.maxAttemptsPerUser,
     questions: course.questions.map((q) => {
       let options: string[] = [];
       try {
@@ -111,6 +113,7 @@ export async function PATCH(request: Request, context: Params) {
       correctOptionIndexes?: number[];
       answer?: string;
     }[];
+    maxAttemptsPerUser?: number | null;
   };
 
   const incomingQuestions = body.questions;
@@ -152,6 +155,12 @@ export async function PATCH(request: Request, context: Params) {
       data: {
         title: body.title,
         description: body.description ?? "",
+        maxAttemptsPerUser:
+          typeof body.maxAttemptsPerUser === "number" &&
+          Number.isInteger(body.maxAttemptsPerUser) &&
+          body.maxAttemptsPerUser > 0
+            ? body.maxAttemptsPerUser
+            : null,
       },
       select: { id: true },
     });

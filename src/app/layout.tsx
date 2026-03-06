@@ -27,6 +27,9 @@ export default function RootLayout({
                 <Link href="/courses" className="nav-link">
                   Kurzusok
                 </Link>
+                <Link href="/my-courses" className="nav-link">
+                  Kurzusaim
+                </Link>
                 <UserMenu />
               </div>
             </div>

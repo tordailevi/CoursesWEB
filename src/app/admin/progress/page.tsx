@@ -104,21 +104,20 @@ export default function AdminProgressPage() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        <button
-          type="button"
-          className="btn btn-ghost"
-          onClick={() => setQuery("")}
-          disabled={loading || !query.trim()}
-        >
-          Törlés
-        </button>
       </div>
       {error && (
         <p style={{ color: "#fecaca", fontSize: "0.85rem", marginTop: "0.4rem" }}>
           {error}
         </p>
       )}
-      <div style={{ marginTop: "1rem" }}>
+      <div
+        style={{
+          marginTop: "1rem",
+          maxHeight: "60vh",
+          overflowY: "auto",
+          paddingRight: "0.25rem",
+        }}
+      >
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr
@@ -134,6 +133,7 @@ export default function AdminProgressPage() {
               <th style={{ paddingBottom: "0.4rem" }}>Kurzus</th>
               <th style={{ paddingBottom: "0.4rem" }}>Eredmény</th>
               <th style={{ paddingBottom: "0.4rem" }}>Frissítve</th>
+              <th style={{ paddingBottom: "0.4rem" }}>Műveletek</th>
             </tr>
           </thead>
           <tbody>
@@ -142,13 +142,94 @@ export default function AdminProgressPage() {
                 <td style={{ padding: "0.4rem 0" }}>{r.username}</td>
                 <td style={{ padding: "0.4rem 0" }}>{r.courseTitle}</td>
                 <td style={{ padding: "0.4rem 0" }}>{r.score}%</td>
-                <td style={{ padding: "0.4rem 0", fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                <td
+                  style={{
+                    padding: "0.4rem 0",
+                    fontSize: "0.8rem",
+                    color: "var(--text-muted)",
+                  }}
+                >
                   {new Date(r.updatedAt).toLocaleString()}
+                </td>
+                <td style={{ padding: "0.4rem 0" }}>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{ paddingInline: "0.7rem", fontSize: "0.8rem" }}
+                    onClick={async () => {
+                      if (!window.confirm("Biztosan törlöd ezt az eredményt?")) return;
+                      try {
+                        setError(null);
+                        const res = await fetch("/api/admin/progress", {
+                          method: "DELETE",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ id: r.id }),
+                        });
+                        const data = (await res.json()) as { ok?: boolean; error?: string };
+                        if (!res.ok || !data.ok) {
+                          setError(data.error ?? "Nem sikerült törölni az eredményt.");
+                          return;
+                        }
+                        setRows((prev) => prev.filter((row) => row.id !== r.id));
+                      } catch {
+                        setError("Hálózati hiba törlés közben.");
+                      }
+                    }}
+                  >
+                    Törlés
+                  </button>
                 </td>
               </tr>
             ))}
+            {rows.length === 0 && (
+              <tr>
+                <td
+                  colSpan={5}
+                  className="muted"
+                  style={{ padding: "0.45rem 0", fontSize: "0.9rem" }}
+                >
+                  Nincs megjeleníthető eredmény.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
+      </div>
+      <div style={{ marginTop: "0.8rem", display: "flex", justifyContent: "flex-end" }}>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          style={{ paddingInline: "0.8rem", fontSize: "0.8rem" }}
+          disabled={!rows.length}
+          onClick={async () => {
+            if (!rows.length) return;
+            if (
+              !window.confirm(
+                "Biztosan törlöd az összes eredményt? Ez a művelet nem visszavonható.",
+              )
+            ) {
+              return;
+            }
+            try {
+              setError(null);
+              const res = await fetch("/api/admin/progress", {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ all: true }),
+              });
+              const data = (await res.json()) as { ok?: boolean; error?: string };
+              if (!res.ok || !data.ok) {
+                setError(data.error ?? "Nem sikerült törölni az összes eredményt.");
+                return;
+              }
+              setRows([]);
+            } catch {
+              setError("Hálózati hiba törlés közben.");
+            }
+          }}
+        >
+          Összes eredmény törlése
+        </button>
       </div>
     </div>
   );

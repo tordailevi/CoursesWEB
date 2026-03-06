@@ -16,6 +16,7 @@ type CourseDto = {
   slug: string;
   title: string;
   description: string;
+  maxAttemptsPerUser: number | null;
   questions: {
     id: number;
     text: string;
@@ -51,6 +52,7 @@ export default function EditCoursePage() {
 
   const [uploadingForId, setUploadingForId] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [attemptLimitInput, setAttemptLimitInput] = useState<string>("");
 
   useEffect(() => {
     async function load() {
@@ -77,6 +79,9 @@ export default function EditCoursePage() {
         const course = (await courseRes.json()) as CourseDto;
         setTitle(course.title);
         setDescription(course.description);
+        setAttemptLimitInput(
+          course.maxAttemptsPerUser != null ? String(course.maxAttemptsPerUser) : "",
+        );
         setQuestions(
           course.questions.map((q, idx) => ({
             id: `q-${q.id}-${idx}`,
@@ -205,6 +210,18 @@ export default function EditCoursePage() {
       });
     }
 
+    let maxAttemptsPerUser: number | null = null;
+    const trimmedLimit = attemptLimitInput.trim();
+    if (trimmedLimit.length > 0) {
+      const parsed = Number(trimmedLimit);
+      if (!Number.isNaN(parsed) && Number.isInteger(parsed) && parsed > 0) {
+        maxAttemptsPerUser = parsed;
+      } else {
+        setError("A kitöltési limitnek pozitív egész számnak kell lennie, vagy hagyd üresen a végtelenhez.");
+        return;
+      }
+    }
+
     try {
       setSaving(true);
       const res = await fetch(`/api/courses/${encodeURIComponent(courseSlug)}`, {
@@ -214,6 +231,7 @@ export default function EditCoursePage() {
           title: title.trim(),
           description: description.trim(),
           questions: preparedQuestions,
+          maxAttemptsPerUser,
         }),
       });
 
@@ -287,6 +305,51 @@ export default function EditCoursePage() {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
+        </div>
+
+        <div>
+          <label className="field-label" htmlFor="attemptLimit">
+            Maximális kitöltések száma / felhasználó
+          </label>
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+            <input
+              id="attemptLimit"
+              className="input"
+              style={{ maxWidth: "160px" }}
+              placeholder="pl. 3 vagy üres = végtelen"
+              value={attemptLimitInput}
+              onChange={(e) => setAttemptLimitInput(e.target.value)}
+            />
+            <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                style={{ paddingInline: "0.6rem", fontSize: "0.8rem" }}
+                onClick={() => setAttemptLimitInput("1")}
+              >
+                1
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                style={{ paddingInline: "0.6rem", fontSize: "0.8rem" }}
+                onClick={() => setAttemptLimitInput("5")}
+              >
+                5
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                style={{ paddingInline: "0.6rem", fontSize: "0.8rem" }}
+                onClick={() => setAttemptLimitInput("")}
+              >
+                Végtelen
+              </button>
+            </div>
+          </div>
+          <p className="muted" style={{ fontSize: "0.8rem", marginTop: "0.25rem" }}>
+            Ha üresen hagyod, a kurzus korlátlanul tölthető ki.
+          </p>
         </div>
 
         <div>

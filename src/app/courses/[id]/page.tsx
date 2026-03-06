@@ -35,6 +35,11 @@ type ProgressDto = {
   score: number;
 };
 
+type AttemptInfo = {
+  attemptCount: number;
+  maxAttemptsPerUser: number | null;
+};
+
 type AnswerMap = Record<number, number[]>;
 
 export default function CourseDetailPage() {
@@ -48,6 +53,9 @@ export default function CourseDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [notFoundState, setNotFoundState] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [lastSavedAnswers, setLastSavedAnswers] = useState<AnswerMap | null>(null);
+  const [attemptInfo, setAttemptInfo] = useState<AttemptInfo | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -82,8 +90,9 @@ export default function CourseDetailPage() {
             `/api/progress?courseSlug=${encodeURIComponent(courseData.slug)}`,
           );
           if (progressRes.ok) {
-            const { progress } = (await progressRes.json()) as {
+            const { progress, attemptInfo } = (await progressRes.json()) as {
               progress: ProgressDto | null;
+              attemptInfo?: AttemptInfo;
             };
             if (progress) {
               const previousAnswers: AnswerMap = {};
@@ -97,6 +106,10 @@ export default function CourseDetailPage() {
               }
               setAnswers(previousAnswers);
               setScore(progress.score);
+              setLastSavedAnswers(previousAnswers);
+            }
+            if (attemptInfo) {
+              setAttemptInfo(attemptInfo);
             }
           }
         } else {
@@ -115,6 +128,7 @@ export default function CourseDetailPage() {
             }
             setAnswers(previousAnswers);
             setScore(guest.score >= 0 ? guest.score : null);
+            setLastSavedAnswers(previousAnswers);
           }
         }
       } catch {
@@ -153,10 +167,44 @@ export default function CourseDetailPage() {
     });
   }
 
+  function normalizeAnswerMap(map: AnswerMap): Record<string, number[]> {
+    const result: Record<string, number[]> = {};
+    for (const [key, value] of Object.entries(map)) {
+      const clean = Array.isArray(value)
+        ? Array.from(new Set(value.filter((n) => Number.isInteger(n)))).sort(
+            (a, b) => a - b,
+          )
+        : [];
+      if (clean.length) {
+        result[key] = clean;
+      }
+    }
+    return result;
+  }
+
+  function areAnswerMapsEqual(a: AnswerMap, b: AnswerMap): boolean {
+    const na = normalizeAnswerMap(a);
+    const nb = normalizeAnswerMap(b);
+    const keysA = Object.keys(na).sort();
+    const keysB = Object.keys(nb).sort();
+    if (keysA.length !== keysB.length) return false;
+    for (let i = 0; i < keysA.length; i += 1) {
+      if (keysA[i] !== keysB[i]) return false;
+      const va = na[keysA[i]] ?? [];
+      const vb = nb[keysB[i]] ?? [];
+      if (va.length !== vb.length) return false;
+      for (let j = 0; j < va.length; j += 1) {
+        if (va[j] !== vb[j]) return false;
+      }
+    }
+    return true;
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!course) return;
+    if (!course || submitting) return;
     setError(null);
+    setSubmitting(true);
     const loggedIn = !!user;
 
     if (loggedIn) {
@@ -171,16 +219,30 @@ export default function CourseDetailPage() {
             ),
           }),
         });
-        const data = (await res.json()) as { ok?: boolean; score?: number; error?: string };
+        const data = (await res.json()) as {
+          ok?: boolean;
+          score?: number;
+          error?: string;
+          attemptInfo?: AttemptInfo;
+        };
         if (!res.ok) {
           setError(data.error ?? "Nem sikerült elmenteni a válaszokat.");
+          if (data.attemptInfo) {
+            setAttemptInfo(data.attemptInfo);
+          }
           return;
         }
         if (typeof data.score === "number") {
           setScore(data.score);
         }
+        setLastSavedAnswers(answers);
+        if (data.attemptInfo) {
+          setAttemptInfo(data.attemptInfo);
+        }
       } catch {
         setError("Hálózati hiba mentés közben.");
+      } finally {
+        setSubmitting(false);
       }
     } else {
       try {
@@ -227,6 +289,8 @@ export default function CourseDetailPage() {
         setScore(created.score);
       } catch {
         setError("Hálózati hiba mentés közben.");
+      } finally {
+        setSubmitting(false);
       }
     }
   }
@@ -236,6 +300,16 @@ export default function CourseDetailPage() {
 
   const currentQuestion = course.questions[currentIndex];
   const isLast = currentIndex === totalQuestions - 1;
+
+  const hasChanges =
+    !lastSavedAnswers || !areAnswerMapsEqual(answers, lastSavedAnswers);
+
+  const limitReached =
+    attemptInfo && attemptInfo.maxAttemptsPerUser != null
+      ? (attemptInfo.attemptCount ?? 0) >= attemptInfo.maxAttemptsPerUser
+      : false;
+
+  const submitDisabled = submitting || !hasChanges || limitReached;
 
   return (
     <div className="card-grid">
@@ -382,15 +456,16 @@ export default function CourseDetailPage() {
                   Következő
                 </button>
               ) : (
-                <button type="submit" className="btn btn-primary">
-                  Válaszok mentése
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={submitDisabled}
+                >
+                  {submitting ? "Mentés..." : "Válaszok mentése"}
                 </button>
               )}
             </div>
             <div style={{ display: "grid", justifyItems: "end", gap: "0.25rem" }}>
-              <p className="muted" style={{ fontSize: "0.85rem" }}>
-                Mentett eredmény: {percentLabel}
-              </p>
               {error && (
                 <p style={{ color: "#fecaca", fontSize: "0.85rem" }}>{error}</p>
               )}
