@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
 import { UserMenu } from "@/components/UserMenu";
+import { HeaderClock } from "@/components/HeaderClock";
 
 export const metadata: Metadata = {
   title: "Kurzus tréner",
@@ -23,6 +24,7 @@ export default function RootLayout({
                 <span className="brand-main">Kurzus tréner</span>
                 <span className="brand-sub">Gyakorlás és haladás követése</span>
               </Link>
+              <HeaderClock />
               <div className="nav">
                 <Link href="/courses" className="nav-link">
                   Kurzusok

@@ -236,6 +236,12 @@ a {
   transform: translateY(-1px) scale(1.01);
 }
 
+.header-clock-large {
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-main);
+}
+
 .card::before {
   content: "";
   position: absolute;
